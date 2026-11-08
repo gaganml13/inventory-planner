@@ -146,7 +146,118 @@ function parseLinesToProducts(lines) {
   return products;
 }
 
+function parseOrderDocumentLines(lines, existingProducts = []) {
+  const items = [];
+  const prodBySku = new Map();
+  const prodByBarcode = new Map();
+  const prodByName = new Map();
+
+  for (const p of existingProducts) {
+    if (p.sku) prodBySku.set(String(p.sku).trim().toUpperCase(), p);
+    if (p.barcode) prodByBarcode.set(String(p.barcode).trim(), p);
+    if (p.name) prodByName.set(String(p.name).trim().toLowerCase(), p);
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i].trim();
+    if (!rawLine || rawLine.length < 2) continue;
+
+    // Skip generic document header / footer rows
+    if (/^(sku|product|item|description|page|total|invoice|po\s*number|order|qty|quantity|unit\s*price|subtotal|sl\s*no|line)/i.test(rawLine)) {
+      continue;
+    }
+
+    let sku = '';
+    let name = '';
+    let qty = 1;
+    let price = null;
+
+    // 1. Delimited (CSV, TSV, pipe, semicolon)
+    if (rawLine.includes(',') || rawLine.includes('\t') || rawLine.includes('|') || rawLine.includes(';')) {
+      const delim = rawLine.includes('\t') ? '\t' : (rawLine.includes('|') ? '|' : (rawLine.includes(';') ? ';' : ','));
+      const parts = rawLine.split(delim).map((s) => s.trim().replace(/^["']|["']$/g, ''));
+      if (parts.length >= 2) {
+        sku = parts[0].replace(/[^A-Za-z0-9_-]/g, '').toUpperCase();
+        
+        // Check if part[1] is a quantity or a description
+        const p1Num = parseInt(parts[1], 10);
+        if (!isNaN(p1Num) && /^\d+$/.test(parts[1])) {
+          qty = p1Num;
+          if (parts[2]) price = parseFloat(parts[2].replace(/[$,]/g, '')) || null;
+        } else {
+          name = parts[1];
+          if (parts[2]) {
+            const p2Num = parseInt(parts[2], 10);
+            if (!isNaN(p2Num)) qty = p2Num;
+          }
+          if (parts[3]) price = parseFloat(parts[3].replace(/[$,]/g, '')) || null;
+        }
+      }
+    } else {
+      // 2. Space / Columnar separated tokens
+      const tokens = rawLine.split(/\s+/).filter(Boolean);
+      if (tokens.length >= 2) {
+        const firstToken = tokens[0].replace(/[^A-Za-z0-9_-]/g, '').toUpperCase();
+        if (firstToken.length >= 2) {
+          sku = firstToken;
+          // Look for numbers from the end
+          for (let k = tokens.length - 1; k >= 1; k--) {
+            const tok = tokens[k].replace(/[$,]/g, '');
+            const val = parseFloat(tok);
+            if (!isNaN(val)) {
+              if (price === null && tok.includes('.')) {
+                price = val;
+              } else if (Number.isInteger(val) && val > 0 && qty === 1) {
+                qty = parseInt(val, 10);
+              }
+            } else if (!name) {
+              name = tokens.slice(1, k + 1).join(' ');
+            }
+          }
+        }
+      }
+    }
+
+    if (!sku && !name) continue;
+
+    // Attempt product matching
+    let matched = null;
+    if (sku && prodBySku.has(sku)) {
+      matched = prodBySku.get(sku);
+    } else if (sku && prodByBarcode.has(sku)) {
+      matched = prodByBarcode.get(sku);
+    } else if (name && prodByName.has(name.toLowerCase())) {
+      matched = prodByName.get(name.toLowerCase());
+    } else if (sku) {
+      // Partial SKU lookup
+      for (const [s, p] of prodBySku.entries()) {
+        if (s.includes(sku) || sku.includes(s)) {
+          matched = p;
+          break;
+        }
+      }
+    }
+
+    items.push({
+      line_number: items.length + 1,
+      raw_sku: sku || (matched ? matched.sku : 'UNKNOWN'),
+      raw_name: name || (matched ? matched.name : (sku || 'Unnamed Item')),
+      quantity: Math.max(1, qty),
+      unit_price: price !== null ? price : (matched ? (matched.cost_price_cents / 100) : 10.0),
+      unit_price_cents: price !== null ? Math.round(price * 100) : (matched ? matched.cost_price_cents : 1000),
+      is_matched: Boolean(matched),
+      product_id: matched ? matched.id : null,
+      matched_sku: matched ? matched.sku : null,
+      matched_name: matched ? matched.name : null,
+      pack_size: matched ? (matched.pack_size || 1) : 1
+    });
+  }
+
+  return items;
+}
+
 module.exports = {
   extractTextFromPdfBuffer,
-  parseLinesToProducts
+  parseLinesToProducts,
+  parseOrderDocumentLines
 };

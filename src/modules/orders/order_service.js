@@ -523,6 +523,140 @@ class OrderService {
   }
 
   /**
+   * Reverts a CONFIRMED or APPROVED order back to DRAFT (unconfirm).
+   * Validates that no physical stock or payments have been processed yet.
+   */
+  unconfirmOrder(orderId, businessId) {
+    let result;
+    const unconfirmTx = this.db.transaction(() => {
+      const order = this.db.prepare('SELECT * FROM orders WHERE id = ? AND business_id = ?').get(orderId, businessId);
+      if (!order) {
+        const err = new Error(`Order #${orderId} not found`);
+        err.code = 'ORDER_NOT_FOUND';
+        throw err;
+      }
+
+      if (!['CONFIRMED', 'APPROVED'].includes(order.status)) {
+        const err = new Error(`Only CONFIRMED or APPROVED orders can be unconfirmed (current status: ${order.status})`);
+        err.code = 'INVALID_ORDER_STATE';
+        throw err;
+      }
+
+      // Check if any line has been received or fulfilled
+      const processedLine = this.db.prepare(`
+        SELECT id FROM order_lines 
+        WHERE order_id = ? AND (COALESCE(received_quantity, 0) > 0 OR COALESCE(fulfilled_quantity, 0) > 0)
+        LIMIT 1
+      `).get(orderId);
+
+      if (processedLine) {
+        const err = new Error('Order already has partial items received or shipped. Use "Reverse / Void Entry" to roll back.');
+        err.code = 'HAS_PROCESSED_ITEMS';
+        throw err;
+      }
+
+      if (order.paid_cents && order.paid_cents > 0) {
+        const err = new Error('Order already has recorded payments. Void payments first or use "Reverse / Void Entry".');
+        err.code = 'HAS_PAYMENTS';
+        throw err;
+      }
+
+      this.db.prepare("UPDATE orders SET status = 'DRAFT' WHERE id = ?").run(orderId);
+      result = this.getOrderById(orderId, businessId);
+    });
+
+    unconfirmTx();
+    return result;
+  }
+
+  /**
+   * Atomic Void & Reversal: Safely restores exact on_hand, reserved, incoming,
+   * and cash balances, then resets order back to DRAFT.
+   */
+  voidAndRevertOrder({ orderId, businessId, reason = 'Operator void and reversal' }) {
+    let result;
+    const voidTx = this.db.transaction(() => {
+      const order = this.db.prepare('SELECT * FROM orders WHERE id = ? AND business_id = ?').get(orderId, businessId);
+      if (!order) {
+        const err = new Error(`Order #${orderId} not found`);
+        err.code = 'ORDER_NOT_FOUND';
+        throw err;
+      }
+
+      if (order.status === 'CANCELLED') {
+        const err = new Error('Cancelled order cannot be voided.');
+        err.code = 'INVALID_ORDER_STATE';
+        throw err;
+      }
+
+      // 1. Reverse all active payment allocations
+      const payments = this.db.prepare('SELECT * FROM payment_allocations WHERE order_id = ? AND (is_voided = 0 OR is_voided IS NULL)').all(orderId);
+      for (const p of payments) {
+        if (order.type === 'SALE') {
+          // Reversing received customer payment -> decrease cash
+          this.db.prepare('UPDATE businesses SET operating_cash_cents = operating_cash_cents - ? WHERE id = ?').run(p.amount_cents, businessId);
+        } else if (order.type === 'PURCHASE') {
+          // Reversing vendor payment -> restore cash
+          this.db.prepare('UPDATE businesses SET operating_cash_cents = operating_cash_cents + ? WHERE id = ?').run(p.amount_cents, businessId);
+        }
+        this.db.prepare(`
+          UPDATE payment_allocations 
+          SET is_voided = 1, void_reason = ?, voided_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+          WHERE id = ?
+        `).run(reason, p.id);
+      }
+      this.db.prepare('UPDATE orders SET paid_cents = 0 WHERE id = ?').run(orderId);
+
+      // 2. Reverse all executed stock movements linked to order lines
+      const lines = this.db.prepare('SELECT * FROM order_lines WHERE order_id = ?').all(orderId);
+      const firstLoc = this.db.prepare('SELECT id FROM locations WHERE business_id = ? LIMIT 1').get(businessId);
+      const locId = firstLoc ? firstLoc.id : 1;
+
+      for (const line of lines) {
+        // If PURCHASE: received items were added to stock -> deduct them back
+        const receivedQty = line.received_quantity || 0;
+        if (order.type === 'PURCHASE' && receivedQty > 0) {
+          const onHandRow = this.db.prepare('SELECT COALESCE(SUM(change_qty), 0) AS on_hand FROM stock_movements WHERE product_id = ? AND business_id = ?').get(line.product_id, businessId);
+          const currentOnHand = onHandRow ? onHandRow.on_hand : 0;
+          const newBalance = currentOnHand - receivedQty;
+
+          this.db.prepare(`
+            INSERT INTO stock_movements (
+              business_id, product_id, location_id, change_qty, balance_after,
+              reason, order_line_id, source_tag, stock_type
+            ) VALUES (?, ?, ?, ?, ?, 'VOID_RECEIPT_REVERSAL', ?, 'VOID', 'AVAILABLE')
+          `).run(businessId, line.product_id, locId, -receivedQty, newBalance, line.id);
+        }
+
+        // If SALE: fulfilled items were deducted from stock -> restore them
+        const fulfilledQty = line.fulfilled_quantity || 0;
+        if (order.type === 'SALE' && fulfilledQty > 0) {
+          const onHandRow = this.db.prepare('SELECT COALESCE(SUM(change_qty), 0) AS on_hand FROM stock_movements WHERE product_id = ? AND business_id = ?').get(line.product_id, businessId);
+          const currentOnHand = onHandRow ? onHandRow.on_hand : 0;
+          const newBalance = currentOnHand + fulfilledQty;
+
+          this.db.prepare(`
+            INSERT INTO stock_movements (
+              business_id, product_id, location_id, change_qty, balance_after,
+              reason, order_line_id, source_tag, stock_type
+            ) VALUES (?, ?, ?, ?, ?, 'VOID_SHIPMENT_REVERSAL', ?, 'VOID', 'AVAILABLE')
+          `).run(businessId, line.product_id, locId, fulfilledQty, newBalance, line.id);
+        }
+
+        // Reset line counters
+        this.db.prepare('UPDATE order_lines SET received_quantity = 0, fulfilled_quantity = 0 WHERE id = ?').run(line.id);
+      }
+
+      // 3. Reset order status to DRAFT
+      this.db.prepare("UPDATE orders SET status = 'DRAFT' WHERE id = ?").run(orderId);
+      result = this.getOrderById(orderId, businessId);
+    });
+
+    voidTx();
+    return result;
+  }
+
+  /**
    * Retrieves single order by ID with line items and contact details.
    */
   getOrderById(orderId, businessId = null) {

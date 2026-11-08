@@ -73,6 +73,21 @@ function createPaymentRouter(db) {
     }
   });
 
+  /** POST /api/payments/:id/void */
+  router.post('/:id/void', (req, res) => {
+    try {
+      const bizId = getBizId(req);
+      const { reason } = req.body;
+      const result = service.voidPaymentAllocation(parseInt(req.params.id, 10), bizId, reason);
+      res.json(result);
+    } catch (err) {
+      if (err.code === 'NOT_FOUND') {
+        return res.status(404).json({ error: true, message: err.message, code: err.code });
+      }
+      res.status(400).json({ error: true, message: err.message, code: err.code });
+    }
+  });
+
   return router;
 }
 

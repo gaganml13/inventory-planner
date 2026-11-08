@@ -128,6 +128,7 @@ const App = (() => {
         if (target === 'sales') loadSalesOrders();
         if (target === 'payments') loadPayments();
         if (target === 'insights') loadInsightsOverview();
+        if (target === 'b2b') loadB2bData();
         if (target === 'settings') loadSettings();
         return;
       }
@@ -1496,16 +1497,19 @@ const App = (() => {
     }
 
     tbody.innerHTML = orders.map((o) => {
-      let statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">DRAFT</span>';
-      if (o.status === 'CONFIRMED') statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">CONFIRMED</span>';
+      let statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700" title="Draft — Not Sent Yet">DRAFT (Cart — Not Sent)</span>';
+      if (o.status === 'CONFIRMED') statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200" title="Official Order — Stock Incoming or Reserved">CONFIRMED (Official)</span>';
       if (o.status === 'PARTIALLY_RECEIVED') statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">PARTIAL RECEIPT</span>';
       if (o.status === 'PARTIALLY_FULFILLED') statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">PARTIAL DISPATCH</span>';
-      if (o.status === 'FULFILLED') statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">FULFILLED</span>';
-      if (o.status === 'CANCELLED') statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">CANCELLED</span>';
+      if (o.status === 'FULFILLED') statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">COMPLETED (Delivered)</span>';
+      if (o.status === 'CANCELLED') statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">CANCELLED (Void)</span>';
 
       const canReceive = o.type === 'PURCHASE' && ['CONFIRMED', 'PARTIALLY_RECEIVED'].includes(o.status);
       const canFulfill = o.type === 'SALE' && ['CONFIRMED', 'PARTIALLY_FULFILLED'].includes(o.status);
       const isDraft = o.status === 'DRAFT';
+      const isConfirmed = o.status === 'CONFIRMED';
+      const hasPayments = (o.paid_cents || 0) > 0;
+      const isPartial = ['PARTIALLY_RECEIVED', 'PARTIALLY_FULFILLED'].includes(o.status);
 
       return `
         <tr class="hover:bg-slate-50 transition-colors">
@@ -1519,10 +1523,26 @@ const App = (() => {
           </td>
           <td class="py-3 px-4 text-center">${statusBadge}</td>
           <td class="py-3 px-4 text-right">
-            <div class="inline-flex items-center gap-1.5 justify-end">
+            <div class="inline-flex items-center gap-1.5 justify-end flex-wrap">
               ${isDraft ? `
                 <button onclick="App.confirmOrderAction(${o.id}, '${o.type}')" class="px-2 py-1 rounded text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 transition">
                   Confirm
+                </button>
+                <button onclick="App.cancelOrderAction(${o.id}, '${o.type}')" class="px-2 py-1 rounded text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition">
+                  Cancel
+                </button>
+              ` : ''}
+              ${isConfirmed && !hasPayments ? `
+                <button onclick="App.unconfirmOrderAction(${o.id}, '${o.type}')" title="Revert back to editable draft" class="px-2 py-1 rounded text-[11px] font-semibold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition">
+                  Revert to Draft
+                </button>
+                <button onclick="App.cancelOrderAction(${o.id}, '${o.type}')" title="Cancel this order" class="px-2 py-1 rounded text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition">
+                  Cancel
+                </button>
+              ` : ''}
+              ${(isPartial || (isConfirmed && hasPayments)) ? `
+                <button onclick="App.voidAndRevertOrderAction(${o.id}, '${o.type}')" title="Reverse inventory movements and void allocations" class="px-2 py-1 rounded text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition">
+                  Reverse / Void
                 </button>
               ` : ''}
               ${canReceive ? `
@@ -1535,11 +1555,11 @@ const App = (() => {
                   Dispatch
                 </button>
               ` : ''}
-              ${o.paid_cents < o.total_cents ? `
+              ${o.paid_cents < o.total_cents && o.status !== 'CANCELLED' ? `
                 <button onclick="App.openPaymentForOrder(${o.id}, ${o.total_cents - o.paid_cents})" class="px-2 py-1 rounded text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition">
                   Pay
                 </button>
-              ` : '<span class="text-slate-400 text-[10px] font-medium">Settled</span>'}
+              ` : (o.status !== 'CANCELLED' ? '<span class="text-slate-400 text-[10px] font-medium">Settled</span>' : '')}
             </div>
           </td>
         </tr>
@@ -1579,7 +1599,7 @@ const App = (() => {
         }
 
         tbody.innerHTML = payments.map((p) => `
-          <tr class="hover:bg-slate-50 transition-colors">
+          <tr class="hover:bg-slate-50 transition-colors ${p.is_voided ? 'opacity-60 bg-slate-50/50' : ''}">
             <td class="py-2.5 px-4 text-slate-500 font-mono text-[11px]">${formatDate(p.recorded_at)}</td>
             <td class="py-2.5 px-4 font-bold text-slate-800">${p.order_number}</td>
             <td class="py-2.5 px-4 text-slate-600">${p.contact_name || '—'}</td>
@@ -1590,7 +1610,18 @@ const App = (() => {
             </td>
             <td class="py-2.5 px-4 text-right font-bold text-slate-900">${formatMoney(p.amount_cents)}</td>
             <td class="py-2.5 px-4 text-slate-600">${p.payment_method}</td>
-            <td class="py-2.5 px-4 text-slate-500 text-[11px]">${p.notes || '—'}</td>
+            <td class="py-2.5 px-4 text-slate-500 text-[11px]">
+              ${p.is_voided ? `<span class="text-rose-600 font-bold">[VOIDED: ${p.void_reason || 'Reversed'}]</span> ` : ''}${p.notes || '—'}
+            </td>
+            <td class="py-2.5 px-4 text-right">
+              ${p.is_voided ? `
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">VOIDED</span>
+              ` : `
+                <button onclick="App.voidPaymentAction(${p.id})" title="Void payment allocation" class="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition">
+                  Void
+                </button>
+              `}
+            </td>
           </tr>
         `).join('');
       }
@@ -4132,10 +4163,824 @@ const App = (() => {
   };
 
   // ──────────────────────────────────────────
+  // Easy Read Mode (Seniors & Beginners +15% scale)
+  // ──────────────────────────────────────────
+  const toggleEasyReadMode = () => {
+    document.body.classList.toggle('easy-read');
+    const isEasy = document.body.classList.contains('easy-read');
+    localStorage.setItem('easy_read_mode', isEasy);
+    showToast(`Easy Read Mode ${isEasy ? 'Enabled (+15% text size)' : 'Disabled'}`, 'info');
+  };
+
+  // ──────────────────────────────────────────
+  // Reversible Actions (Unconfirm / Cancel / Void & Revert)
+  // ──────────────────────────────────────────
+  const unconfirmOrderAction = async (orderId, type) => {
+    try {
+      const res = await api(`/api/orders/${orderId}/unconfirm`, { method: 'POST' });
+      if (res && res.success) {
+        showToast(res.message || 'Order reverted to Draft status', 'success');
+        if (type === 'PURCHASE') loadPurchaseOrders();
+        else loadSalesOrders();
+        loadOverviewData();
+      }
+    } catch (err) {
+      showToast(err.message || 'Could not revert order', 'error');
+    }
+  };
+
+  const cancelOrderAction = async (orderId, type) => {
+    if (!confirm('Are you sure you want to cancel this order?')) return;
+    try {
+      const res = await api(`/api/orders/${orderId}/cancel`, { method: 'POST' });
+      if (res && (res.success || res.status === 'CANCELLED')) {
+        showToast('Order cancelled', 'info');
+        if (type === 'PURCHASE') loadPurchaseOrders();
+        else loadSalesOrders();
+        loadOverviewData();
+      }
+    } catch (err) {
+      try {
+        await api(`/api/orders/${orderId}/unconfirm`, { method: 'POST' });
+        showToast('Order reverted to Draft', 'info');
+        if (type === 'PURCHASE') loadPurchaseOrders();
+        else loadSalesOrders();
+      } catch (e2) {
+        showToast(err.message || 'Could not cancel order', 'error');
+      }
+    }
+  };
+
+  const voidAndRevertOrderAction = async (orderId, type) => {
+    const reason = prompt('Please enter reason for voiding & reversing this order:', 'Order mistake / cancelled by user');
+    if (!reason) return;
+    try {
+      const res = await api(`/api/orders/${orderId}/void-and-revert`, {
+        method: 'POST',
+        body: JSON.stringify({ reason })
+      });
+      if (res && res.success) {
+        showToast(res.message || 'Order voided and stock restored', 'success');
+        if (type === 'PURCHASE') loadPurchaseOrders();
+        else loadSalesOrders();
+        loadOverviewData();
+        loadPayments();
+      }
+    } catch (err) {
+      showToast(err.message || 'Could not reverse order', 'error');
+    }
+  };
+
+  const voidPaymentAction = async (paymentId) => {
+    const reason = prompt('Reason for voiding payment allocation:', 'Allocation entry error');
+    if (!reason) return;
+    try {
+      const res = await api(`/api/payments/${paymentId}/void`, {
+        method: 'POST',
+        body: JSON.stringify({ reason })
+      });
+      if (res && res.success) {
+        showToast(res.message || 'Payment allocation voided', 'success');
+        loadPayments();
+        loadPurchaseOrders();
+        loadSalesOrders();
+        loadOverviewData();
+      }
+    } catch (err) {
+      showToast(err.message || 'Could not void payment', 'error');
+    }
+  };
+
+  // ──────────────────────────────────────────
+  // Order Import via CSV or PDF
+  // ──────────────────────────────────────────
+  let orderImportData = {
+    type: 'PURCHASE',
+    items: [],
+    allProducts: [],
+    contacts: []
+  };
+
+  const openOrderImportModal = async (type) => {
+    orderImportData.type = type || 'PURCHASE';
+    orderImportData.items = [];
+    const isPurchase = orderImportData.type === 'PURCHASE';
+
+    if ($('orderImportModalTitle')) {
+      $('orderImportModalTitle').textContent = isPurchase
+        ? '📄 Import Purchase Order (PDF / CSV)'
+        : '📄 Import Sales Order (PDF / CSV)';
+    }
+    if ($('orderImportContactLabel')) {
+      $('orderImportContactLabel').textContent = isPurchase ? 'Supplier / Vendor *' : 'Customer *';
+    }
+
+    const fileInput = $('orderImportFileInput');
+    if (fileInput) fileInput.value = '';
+
+    const statusBox = $('orderImportStatus');
+    if (statusBox) {
+      statusBox.classList.add('hidden');
+      statusBox.textContent = '';
+    }
+    const preview = $('orderImportPreviewContainer');
+    if (preview) preview.classList.add('hidden');
+
+    const btn = $('orderImportSubmitBtn');
+    if (btn) btn.disabled = true;
+
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    if ($('orderImportDueDate')) $('orderImportDueDate').value = d.toISOString().split('T')[0];
+
+    try {
+      const contacts = await api(`/api/contacts?type=${isPurchase ? 'SUPPLIER' : 'CUSTOMER'}`);
+      const select = $('orderImportContactSelect');
+      if (select) {
+        select.innerHTML = '<option value="">Select party…</option>' +
+          (contacts || []).map((c) => `<option value="${c.id}">${c.name}</option>`).join('');
+      }
+    } catch (e) {
+      console.error('Error loading contacts for order import:', e);
+    }
+
+    openModal('orderImportModal');
+  };
+
+  const handleOrderImportFile = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const statusBox = $('orderImportStatus');
+    if (statusBox) {
+      statusBox.className = 'p-3 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200';
+      statusBox.textContent = `Analyzing ${file.name}…`;
+      statusBox.classList.remove('hidden');
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const isPdf = file.name.toLowerCase().endsWith('.pdf');
+        let payload = {
+          file_name: file.name,
+          file_type: file.type || (isPdf ? 'application/pdf' : 'text/csv'),
+          order_type: orderImportData.type
+        };
+
+        if (isPdf) {
+          const base64 = e.target.result.split(',')[1];
+          payload.document_base64 = base64;
+        } else {
+          payload.text_content = e.target.result;
+        }
+
+        const res = await api('/api/data/parse-order-document', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+
+        if (!res || !res.items || res.items.length === 0) {
+          if (statusBox) {
+            statusBox.className = 'p-3 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200';
+            statusBox.textContent = 'No recognizable line items found in this document. Please verify the format or download our sample template.';
+          }
+          return;
+        }
+
+        orderImportData.items = res.items;
+        orderImportData.allProducts = res.allProducts || [];
+        orderImportData.contacts = res.contacts || [];
+
+        if (res.contacts && res.contacts.length > 0 && $('orderImportContactSelect')) {
+          const select = $('orderImportContactSelect');
+          select.innerHTML = '<option value="">Select party…</option>' +
+            res.contacts.map((c) => `<option value="${c.id}">${c.name}</option>`).join('');
+        }
+
+        if (statusBox) {
+          const matchedCount = res.items.filter(i => i.matched).length;
+          statusBox.className = 'p-3 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200';
+          statusBox.textContent = `Successfully parsed ${res.items.length} line items (${matchedCount} auto-matched to catalog).`;
+        }
+
+        renderOrderImportPreview();
+      } catch (parseErr) {
+        if (statusBox) {
+          statusBox.className = 'p-3 rounded-lg text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200';
+          statusBox.textContent = `Error parsing file: ${parseErr.message}`;
+        }
+      }
+    };
+
+    if (file.name.toLowerCase().endsWith('.pdf')) {
+      reader.readAsDataURL(file);
+    } else {
+      reader.readAsText(file);
+    }
+  };
+
+  const renderOrderImportPreview = () => {
+    const tbody = $('orderImportTableBody');
+    if (!tbody) return;
+
+    let totalCents = 0;
+    tbody.innerHTML = orderImportData.items.map((item, idx) => {
+      const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
+      const priceDollars = parseFloat(item.unit_price_dollars) || 0;
+      const lineTotalDollars = (qty * priceDollars).toFixed(2);
+      totalCents += Math.round(qty * priceDollars * 100);
+
+      const productOptions = orderImportData.allProducts.map((p) => {
+        const isSelected = item.product_id === p.id;
+        return `<option value="${p.id}" ${isSelected ? 'selected' : ''}>${p.sku} — ${p.name}</option>`;
+      }).join('');
+
+      const matchBadge = item.matched
+        ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">MATCHED</span>`
+        : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">MAP SKU</span>`;
+
+      return `
+        <tr class="hover:bg-slate-50">
+          <td class="py-2 px-3">
+            <div class="font-bold text-slate-800">${item.candidate_sku || item.sku || 'Line ' + (idx + 1)}</div>
+            <div class="text-[10px] text-slate-500 truncate max-w-[160px]">${item.name || item.original_line || ''}</div>
+          </td>
+          <td class="py-2 px-3">
+            <div class="flex items-center gap-1.5">
+              ${matchBadge}
+              <select onchange="App.handleImportProductSelect(${idx}, this.value)" class="text-xs border border-slate-300 rounded px-2 py-1 max-w-[200px] bg-white">
+                <option value="">-- Choose Catalog SKU --</option>
+                ${productOptions}
+              </select>
+            </div>
+          </td>
+          <td class="py-2 px-3 text-right">
+            <input type="number" min="1" value="${qty}" onchange="App.handleImportQtyChange(${idx}, this.value)" class="w-16 text-right border border-slate-300 rounded px-1.5 py-1 text-xs" />
+          </td>
+          <td class="py-2 px-3 text-right">
+            <input type="number" step="0.01" min="0" value="${priceDollars.toFixed(2)}" onchange="App.handleImportPriceChange(${idx}, this.value)" class="w-20 text-right border border-slate-300 rounded px-1.5 py-1 text-xs" />
+          </td>
+          <td class="py-2 px-3 text-right font-bold text-slate-900">$${lineTotalDollars}</td>
+          <td class="py-2 px-3 text-center">
+            <button onclick="App.removeImportLine(${idx})" class="text-rose-500 hover:text-rose-700 text-sm font-bold">&times;</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    if ($('orderImportItemCount')) $('orderImportItemCount').textContent = orderImportData.items.length;
+    if ($('orderImportTotal')) $('orderImportTotal').textContent = formatMoney(totalCents);
+    if ($('orderImportPreviewContainer')) $('orderImportPreviewContainer').classList.remove('hidden');
+
+    const btn = $('orderImportSubmitBtn');
+    if (btn) btn.disabled = orderImportData.items.length === 0;
+  };
+
+  const handleImportProductSelect = (idx, prodId) => {
+    if (!orderImportData.items[idx]) return;
+    const id = parseInt(prodId, 10);
+    orderImportData.items[idx].product_id = id || null;
+    orderImportData.items[idx].matched = !!id;
+    if (id) {
+      const p = orderImportData.allProducts.find(prod => prod.id === id);
+      if (p && !orderImportData.items[idx].unit_price_dollars) {
+        const cents = orderImportData.type === 'PURCHASE' ? p.cost_price_cents : p.sell_price_cents;
+        orderImportData.items[idx].unit_price_dollars = (cents / 100).toFixed(2);
+      }
+    }
+    renderOrderImportPreview();
+  };
+
+  const handleImportQtyChange = (idx, val) => {
+    if (!orderImportData.items[idx]) return;
+    orderImportData.items[idx].quantity = Math.max(1, parseInt(val, 10) || 1);
+    renderOrderImportPreview();
+  };
+
+  const handleImportPriceChange = (idx, val) => {
+    if (!orderImportData.items[idx]) return;
+    orderImportData.items[idx].unit_price_dollars = Math.max(0, parseFloat(val) || 0);
+    renderOrderImportPreview();
+  };
+
+  const removeImportLine = (idx) => {
+    orderImportData.items.splice(idx, 1);
+    renderOrderImportPreview();
+  };
+
+  const createOrderFromImport = async () => {
+    const contactId = $('orderImportContactSelect')?.value;
+    const dueDate = $('orderImportDueDate')?.value;
+
+    if (!contactId) {
+      alert('Please select a contact/party for this order');
+      return;
+    }
+    if (!dueDate) {
+      alert('Please select a due date');
+      return;
+    }
+
+    const validLines = orderImportData.items.filter(i => i.product_id);
+    if (validLines.length === 0) {
+      alert('Please map at least one item to a catalog SKU before creating the order.');
+      return;
+    }
+
+    const lines = validLines.map(i => ({
+      product_id: i.product_id,
+      quantity: parseInt(i.quantity, 10) || 1,
+      unit_price_cents: Math.round((parseFloat(i.unit_price_dollars) || 0) * 100)
+    }));
+
+    try {
+      const res = await api('/api/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          type: orderImportData.type,
+          contact_id: parseInt(contactId, 10),
+          due_date: dueDate,
+          lines,
+          notes: 'Imported via CSV/PDF'
+        })
+      });
+
+      if (res && (res.id || res.order_number)) {
+        showToast(`Draft Order ${res.order_number} created with ${lines.length} lines`, 'success');
+        closeModal('orderImportModal');
+        if (orderImportData.type === 'PURCHASE') loadPurchaseOrders();
+        else loadSalesOrders();
+      }
+    } catch (err) {
+      showToast(err.message || 'Error creating order from import', 'error');
+    }
+  };
+
+  // ──────────────────────────────────────────
+  // Copilot Resizing & Floating Pill
+  // ──────────────────────────────────────────
+  const initCopilotResizer = () => {
+    const handle = $('copilotResizeHandle');
+    const drawer = $('copilotDrawer');
+    if (!handle || !drawer) return;
+
+    let isResizing = false;
+
+    handle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      handle.classList.add('active');
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      const newWidth = Math.max(300, Math.min(650, window.innerWidth - e.clientX));
+      drawer.style.width = `${newWidth}px`;
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        handle.classList.remove('active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
+  };
+
+  const minimizeCopilot = () => {
+    const drawer = $('copilotDrawer');
+    const pill = $('copilotMiniPill');
+    const backdrop = $('copilotBackdrop');
+    if (drawer) drawer.classList.add('translate-x-full');
+    if (backdrop) backdrop.classList.add('hidden');
+    if (pill) pill.classList.remove('hidden');
+  };
+
+  const restoreCopilot = () => {
+    const pill = $('copilotMiniPill');
+    if (pill) pill.classList.add('hidden');
+    toggleCopilot(true);
+  };
+
+  const toggleCopilotWidthPreset = () => {
+    const drawer = $('copilotDrawer');
+    if (!drawer) return;
+    const current = parseInt(drawer.style.width || '340', 10);
+    if (current < 450) {
+      drawer.style.width = '520px';
+    } else {
+      drawer.style.width = '340px';
+    }
+  };
+
+  // ──────────────────────────────────────────
+  // B2B Wholesale Network Controller
+  // ──────────────────────────────────────────
+  let b2bCart = {
+    sellerId: null,
+    sellerName: '',
+    items: []
+  };
+
+  const switchB2bTab = (tab) => {
+    ['wholesalers', 'matches', 'orders'].forEach((t) => {
+      const btn = $(`b2bTab${t.charAt(0).toUpperCase() + t.slice(1)}Btn`);
+      const view = $(`b2bTab${t.charAt(0).toUpperCase() + t.slice(1)}View`);
+      if (t === tab) {
+        if (btn) btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-2xs transition';
+        if (view) view.classList.remove('hidden');
+      } else {
+        if (btn) btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition';
+        if (view) view.classList.add('hidden');
+      }
+    });
+  };
+
+  const loadB2bData = async () => {
+    try {
+      const [dirs, matches, orders] = await Promise.all([
+        api('/api/b2b/directory', { silent: true }).catch(() => []),
+        api('/api/b2b/matches', { silent: true }).catch(() => []),
+        api('/api/b2b/orders', { silent: true }).catch(() => ({ inbound: [], outbound: [] }))
+      ]);
+
+      renderB2bDirectory(dirs);
+      renderB2bMatches(matches);
+      renderB2bOrders(orders);
+    } catch (err) {
+      console.error('Error loading B2B data:', err);
+    }
+  };
+
+  const renderB2bDirectory = (dirs) => {
+    const container = $('b2bDirectoryList');
+    if (!container) return;
+
+    if (!dirs || dirs.length === 0) {
+      container.innerHTML = '<div class="col-span-3 py-12 text-center text-slate-400 bg-white rounded-xl border border-slate-200">No other verified wholesale distributors active on the network.</div>';
+      return;
+    }
+
+    container.innerHTML = dirs.map((d) => `
+      <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between hover:border-indigo-300 transition">
+        <div>
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div class="flex items-center gap-2">
+              <span class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 font-bold flex items-center justify-center text-sm">🏢</span>
+              <div>
+                <h4 class="text-sm font-bold text-slate-900">${d.public_name}</h4>
+                <p class="text-[11px] text-slate-500">${d.category || 'General Wholesale'} • ${d.city || 'Hub'}</p>
+              </div>
+            </div>
+            ${d.is_verified ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">VERIFIED</span>' : ''}
+          </div>
+          <p class="text-xs text-slate-600 line-clamp-2 my-2">${d.description || 'Verified wholesale distributor with immediate fulfillment capability.'}</p>
+          <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-100 my-2">
+            <div>Min Order: <strong class="text-slate-800">${formatMoney(d.min_order_cents || 0)}</strong></div>
+            <div>Delivery: <strong class="text-slate-800">${d.delivery_days || 3} days</strong></div>
+            <div>Active SKUs: <strong class="text-indigo-700">${d.active_skus || 0} items</strong></div>
+          </div>
+        </div>
+        <div class="pt-3 border-t border-slate-100 mt-2">
+          <button onclick="App.openB2bCatalogModal(${d.business_id}, '${d.public_name.replace(/'/g, "\\'")}')" class="w-full py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs transition">
+            Browse Wholesale Catalog & Order ➔
+          </button>
+        </div>
+      </div>
+    `).join('');
+  };
+
+  const renderB2bMatches = (matches) => {
+    const container = $('b2bMatchesList');
+    if (!container) return;
+
+    if (!matches || matches.length === 0) {
+      container.innerHTML = '<div class="py-12 text-center text-slate-400 bg-white rounded-xl border border-slate-200">No urgent inventory shortages matching wholesale suppliers right now. Your inventory health is optimal!</div>';
+      return;
+    }
+
+    container.innerHTML = matches.map((m) => `
+      <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 font-bold flex items-center justify-center text-base shrink-0">⚠️</div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-slate-900 text-xs">${m.sku}</span>
+              <span class="text-xs text-slate-600">${m.product_name}</span>
+              <span class="px-2 py-0.2 rounded text-[10px] font-bold bg-rose-50 text-rose-700">Stockout Risk</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-0.5">Your Stock: <strong class="text-rose-600">${m.my_stock.on_hand}</strong> units (${m.my_stock.days_of_cover}d cover, lead ${m.my_stock.lead_days}d). Available from <strong class="text-indigo-700">${m.seller.seller_name}</strong> at ${formatMoney(m.seller.b2b_price_cents)}/unit.</p>
+          </div>
+        </div>
+        <div class="shrink-0 flex items-center gap-2">
+          <button onclick="App.openB2bCatalogModal(${m.seller.seller_id}, '${m.seller.seller_name.replace(/'/g, "\\'")}')" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-2xs transition">
+            Order from ${m.seller.seller_name}
+          </button>
+        </div>
+      </div>
+    `).join('');
+  };
+
+  const renderB2bOrders = (orders) => {
+    const inbound = orders?.inbound || [];
+    const outbound = orders?.outbound || [];
+
+    if ($('b2bInboundCountBadge')) $('b2bInboundCountBadge').textContent = `${inbound.length} Inbound`;
+    if ($('b2bOutboundCountBadge')) $('b2bOutboundCountBadge').textContent = `${outbound.length} Outbound`;
+
+    const inTbody = $('b2bInboundOrdersTableBody');
+    if (inTbody) {
+      if (inbound.length === 0) {
+        inTbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-400">No inbound orders from other wholesalers yet.</td></tr>';
+      } else {
+        inTbody.innerHTML = inbound.map((o) => {
+          let badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">${o.status}</span>`;
+          if (o.status === 'ACCEPTED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">ACCEPTED (SO Active)</span>`;
+          if (o.status === 'SHIPPED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">SHIPPED</span>`;
+          if (o.status === 'COMPLETED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">COMPLETED</span>`;
+          if (o.status === 'DECLINED' || o.status === 'CANCELLED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700">VOIDED</span>`;
+
+          return `
+            <tr class="hover:bg-slate-50">
+              <td class="py-2.5 px-4 font-bold text-slate-900">${o.trade_reference}</td>
+              <td class="py-2.5 px-4 font-semibold text-slate-800">${o.buyer_name}</td>
+              <td class="py-2.5 px-4 text-slate-500">${formatDate(o.created_at)}</td>
+              <td class="py-2.5 px-4 text-right font-bold text-slate-900">${formatMoney(o.total_cents)}</td>
+              <td class="py-2.5 px-4 text-center">${badge}</td>
+              <td class="py-2.5 px-4 text-right">
+                <div class="inline-flex items-center gap-1.5 justify-end">
+                  ${o.status === 'REQUESTED' ? `
+                    <button onclick="App.acceptB2bTrade(${o.id})" class="px-2.5 py-1 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition">Accept</button>
+                    <button onclick="App.declineB2bTrade(${o.id})" class="px-2 py-1 rounded text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition">Decline</button>
+                  ` : ''}
+                  ${o.status === 'ACCEPTED' ? `
+                    <button onclick="App.shipB2bTrade(${o.id})" class="px-2.5 py-1 rounded text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-2xs transition">Mark Shipped</button>
+                  ` : ''}
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+
+    const outTbody = $('b2bOutboundOrdersTableBody');
+    if (outTbody) {
+      if (outbound.length === 0) {
+        outTbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-400">No outbound replenishment orders placed yet.</td></tr>';
+      } else {
+        outTbody.innerHTML = outbound.map((o) => {
+          let badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">${o.status}</span>`;
+          if (o.status === 'ACCEPTED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">CONFIRMED (Awaiting Dispatch)</span>`;
+          if (o.status === 'SHIPPED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">IN TRANSIT</span>`;
+          if (o.status === 'COMPLETED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">RECEIVED</span>`;
+          if (o.status === 'DECLINED' || o.status === 'CANCELLED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700">VOIDED</span>`;
+
+          return `
+            <tr class="hover:bg-slate-50">
+              <td class="py-2.5 px-4 font-bold text-slate-900">${o.trade_reference}</td>
+              <td class="py-2.5 px-4 font-semibold text-slate-800">${o.seller_name}</td>
+              <td class="py-2.5 px-4 text-slate-500">${formatDate(o.created_at)}</td>
+              <td class="py-2.5 px-4 text-right font-bold text-slate-900">${formatMoney(o.total_cents)}</td>
+              <td class="py-2.5 px-4 text-center">${badge}</td>
+              <td class="py-2.5 px-4 text-right">
+                <div class="inline-flex items-center gap-1.5 justify-end">
+                  ${['REQUESTED', 'ACCEPTED'].includes(o.status) ? `
+                    <button onclick="App.declineB2bTrade(${o.id})" class="px-2 py-1 rounded text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition">Cancel</button>
+                  ` : ''}
+                  ${o.status === 'SHIPPED' ? `
+                    <button onclick="App.receiveB2bTrade(${o.id})" class="px-2.5 py-1 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition">Receive Stock</button>
+                  ` : ''}
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+  };
+
+  const openB2bCatalogModal = async (sellerId, sellerName) => {
+    b2bCart = {
+      sellerId,
+      sellerName,
+      items: []
+    };
+
+    if ($('b2bCatalogModalTitle')) $('b2bCatalogModalTitle').textContent = `${sellerName} — Wholesale Catalog`;
+    if ($('b2bTradeCartTotal')) $('b2bTradeCartTotal').textContent = '$0.00';
+
+    const container = $('b2bCatalogListContainer');
+    if (container) container.innerHTML = '<div class="py-12 text-center text-slate-400">Loading catalog…</div>';
+
+    openModal('b2bCatalogModal');
+
+    try {
+      const catalog = await api(`/api/b2b/catalog?seller_id=${sellerId}`);
+      if (!catalog || catalog.length === 0) {
+        if (container) container.innerHTML = '<div class="py-12 text-center text-slate-400">This wholesaler has no items listed at the moment.</div>';
+        return;
+      }
+
+      b2bCart.catalog = catalog;
+      container.innerHTML = catalog.map((item) => `
+        <div class="bg-slate-50 rounded-xl border border-slate-200 p-4 flex items-center justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-slate-900 text-xs">${item.sku}</span>
+              <span class="text-xs text-slate-700">${item.name}</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${item.availability_status === 'In Stock' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                ${item.availability_status}
+              </span>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-1">Pack Size: ${item.pack_size} | MOQ: ${item.b2b_moq} units | Category: ${item.category || 'General'}</p>
+            <p class="text-sm font-bold text-indigo-700 mt-0.5">${formatMoney(item.b2b_price_cents)} / unit</p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <label class="text-xs text-slate-500 font-semibold">Qty:</label>
+            <input type="number" id="b2bQty-${item.product_id}" min="${item.b2b_moq || 1}" step="${item.pack_size || 1}" value="${item.b2b_moq || 1}" 
+              onchange="App.updateB2bCartItem(${item.product_id}, this.value)" 
+              class="w-20 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-right bg-white font-bold" />
+          </div>
+        </div>
+      `).join('');
+
+      b2bCart.items = catalog.map(c => ({
+        product_id: c.product_id,
+        quantity: c.b2b_moq || 1,
+        unit_price_cents: c.b2b_price_cents
+      }));
+      updateB2bCartTotal();
+    } catch (err) {
+      if (container) container.innerHTML = `<div class="p-4 text-xs text-rose-600 bg-rose-50 rounded-xl">Error: ${err.message}</div>`;
+    }
+  };
+
+  const updateB2bCartItem = (prodId, val) => {
+    const qty = Math.max(0, parseInt(val, 10) || 0);
+    const item = (b2bCart.items || []).find(i => i.product_id === prodId);
+    if (item) item.quantity = qty;
+    updateB2bCartTotal();
+  };
+
+  const updateB2bCartTotal = () => {
+    let totalCents = 0;
+    (b2bCart.items || []).forEach(i => {
+      totalCents += (i.quantity || 0) * (i.unit_price_cents || 0);
+    });
+    if ($('b2bTradeCartTotal')) $('b2bTradeCartTotal').textContent = formatMoney(totalCents);
+  };
+
+  const submitB2bTradeOrder = async () => {
+    const activeItems = (b2bCart.items || []).filter(i => i.quantity > 0);
+    if (activeItems.length === 0) {
+      alert('Please enter a quantity greater than zero for at least one item.');
+      return;
+    }
+
+    try {
+      const res = await api('/api/b2b/orders/request', {
+        method: 'POST',
+        body: JSON.stringify({
+          seller_business_id: b2bCart.sellerId,
+          items: activeItems,
+          trade_notes: 'B2B replenishment order'
+        })
+      });
+
+      if (res && res.success) {
+        showToast(`B2B Order ${res.tradeReference} created and submitted to ${b2bCart.sellerName}`, 'success');
+        closeModal('b2bCatalogModal');
+        loadB2bData();
+        loadPurchaseOrders();
+      }
+    } catch (err) {
+      showToast(err.message || 'Could not place B2B trade order', 'error');
+    }
+  };
+
+  const acceptB2bTrade = async (id) => {
+    try {
+      const res = await api(`/api/b2b/orders/${id}/accept`, { method: 'POST' });
+      if (res && res.success) {
+        showToast(res.message || 'Trade order accepted and Sales Order generated', 'success');
+        loadB2bData();
+        loadSalesOrders();
+        loadInventory();
+      }
+    } catch (err) {
+      showToast(err.message || 'Could not accept trade order', 'error');
+    }
+  };
+
+  const declineB2bTrade = async (id) => {
+    const reason = prompt('Reason for declining / cancelling this trade order:', 'Item currently unavailable / cancelled by operator');
+    if (!reason) return;
+    try {
+      const res = await api(`/api/b2b/orders/${id}/decline`, {
+        method: 'POST',
+        body: JSON.stringify({ reason })
+      });
+      if (res && res.success) {
+        showToast(res.message || 'Trade order cancelled', 'info');
+        loadB2bData();
+        loadPurchaseOrders();
+        loadSalesOrders();
+      }
+    } catch (err) {
+      showToast(err.message || 'Could not cancel trade order', 'error');
+    }
+  };
+
+  const shipB2bTrade = async (id) => {
+    try {
+      const res = await api(`/api/b2b/orders/${id}/ship`, { method: 'POST' });
+      if (res && res.success) {
+        showToast(res.message || 'Order marked as shipped', 'success');
+        loadB2bData();
+        loadSalesOrders();
+      }
+    } catch (err) {
+      showToast(err.message || 'Could not ship trade order', 'error');
+    }
+  };
+
+  const receiveB2bTrade = async (id) => {
+    try {
+      const res = await api(`/api/b2b/orders/${id}/receive`, { method: 'POST' });
+      if (res && res.success) {
+        showToast(res.message || 'Stock received into warehouse ledger', 'success');
+        loadB2bData();
+        loadPurchaseOrders();
+        loadInventory();
+        loadOverviewData();
+      }
+    } catch (err) {
+      showToast(err.message || 'Could not receive trade order', 'error');
+    }
+  };
+
+  const openB2bProfileModal = async () => {
+    try {
+      const prof = await api('/api/b2b/profile');
+      if (prof) {
+        if ($('b2bProfilePublicName')) $('b2bProfilePublicName').value = prof.public_name || '';
+        if ($('b2bProfileCategory')) $('b2bProfileCategory').value = prof.category || '';
+        if ($('b2bProfileCity')) $('b2bProfileCity').value = prof.city || '';
+        if ($('b2bProfileMinOrder')) $('b2bProfileMinOrder').value = (prof.min_order_cents ? prof.min_order_cents / 100 : 250);
+        if ($('b2bProfileLeadDays')) $('b2bProfileLeadDays').value = prof.delivery_days || 3;
+        if ($('b2bProfileRegNo')) $('b2bProfileRegNo').value = prof.gst_or_reg_no || '';
+        if ($('b2bProfileDescription')) $('b2bProfileDescription').value = prof.description || '';
+        if ($('b2bProfileIsPublic')) $('b2bProfileIsPublic').checked = prof.is_public === 1;
+      }
+    } catch (err) {
+      console.error('Error fetching B2B profile:', err);
+    }
+    openModal('b2bProfileModal');
+  };
+
+  const saveB2bProfile = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        public_name: $('b2bProfilePublicName')?.value,
+        category: $('b2bProfileCategory')?.value,
+        city: $('b2bProfileCity')?.value,
+        min_order_cents: Math.round((parseFloat($('b2bProfileMinOrder')?.value) || 0) * 100),
+        delivery_days: parseInt($('b2bProfileLeadDays')?.value, 10) || 3,
+        gst_or_reg_no: $('b2bProfileRegNo')?.value,
+        description: $('b2bProfileDescription')?.value,
+        is_public: $('b2bProfileIsPublic')?.checked ? 1 : 0
+      };
+
+      const res = await api('/api/b2b/profile', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+
+      if (res && res.success) {
+        showToast('B2B wholesale profile updated', 'success');
+        closeModal('b2bProfileModal');
+        loadB2bData();
+      }
+    } catch (err) {
+      showToast(err.message || 'Could not save profile', 'error');
+    }
+  };
+
+  // ──────────────────────────────────────────
   // Bootstrap
   // ──────────────────────────────────────────
   const init = () => {
     try {
+      if (localStorage.getItem('easy_read_mode') === 'true') {
+        document.body.classList.add('easy-read');
+      }
+      initCopilotResizer();
       initNavigation();
       loadInitialData();
 
@@ -4236,12 +5081,39 @@ const App = (() => {
     closeModal,
     closeBdClick,
     toggleCopilot,
+    minimizeCopilot,
+    restoreCopilot,
+    toggleCopilotWidthPreset,
     setCopilotMode,
     askCopilotPrompt,
     handleCopilotSubmit,
     handleCopilotAction,
     clearCopilotHistory,
-    copyToClipboard
+    copyToClipboard,
+    toggleEasyReadMode,
+    unconfirmOrderAction,
+    cancelOrderAction,
+    voidAndRevertOrderAction,
+    voidPaymentAction,
+    openOrderImportModal,
+    handleOrderImportFile,
+    renderOrderImportPreview,
+    handleImportProductSelect,
+    handleImportQtyChange,
+    handleImportPriceChange,
+    removeImportLine,
+    createOrderFromImport,
+    switchB2bTab,
+    loadB2bData,
+    openB2bCatalogModal,
+    updateB2bCartItem,
+    submitB2bTradeOrder,
+    acceptB2bTrade,
+    declineB2bTrade,
+    shipB2bTrade,
+    receiveB2bTrade,
+    openB2bProfileModal,
+    saveB2bProfile
   };
 })();
 

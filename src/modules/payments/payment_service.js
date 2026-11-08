@@ -93,6 +93,64 @@ class PaymentService {
   }
 
   /**
+   * Voids an individual payment allocation, reversing operating cash and resetting order paid balance.
+   */
+  voidPaymentAllocation(paymentId, businessId, reason = 'Operator void') {
+    let result;
+    const voidTx = this.db.transaction(() => {
+      const pay = this.db.prepare(`
+        SELECT p.*, o.business_id, o.type AS order_type, o.order_number, o.paid_cents, o.total_cents
+        FROM payment_allocations p
+        JOIN orders o ON p.order_id = o.id
+        WHERE p.id = ? AND o.business_id = ?
+      `).get(paymentId, businessId);
+
+      if (!pay) {
+        const err = new Error(`Payment allocation #${paymentId} not found`);
+        err.code = 'NOT_FOUND';
+        throw err;
+      }
+
+      if (pay.is_voided) {
+        const err = new Error('Payment allocation is already voided');
+        err.code = 'ALREADY_VOIDED';
+        throw err;
+      }
+
+      // Reverse cash effect
+      if (pay.order_type === 'SALE') {
+        this.db.prepare('UPDATE businesses SET operating_cash_cents = operating_cash_cents - ? WHERE id = ?').run(pay.amount_cents, businessId);
+      } else if (pay.order_type === 'PURCHASE') {
+        this.db.prepare('UPDATE businesses SET operating_cash_cents = operating_cash_cents + ? WHERE id = ?').run(pay.amount_cents, businessId);
+      }
+
+      // Update order paid_cents
+      const newPaid = Math.max(0, pay.paid_cents - pay.amount_cents);
+      this.db.prepare('UPDATE orders SET paid_cents = ? WHERE id = ?').run(newPaid, pay.order_id);
+
+      // Mark allocation voided
+      this.db.prepare(`
+        UPDATE payment_allocations 
+        SET is_voided = 1, void_reason = ?, voided_at = (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        WHERE id = ?
+      `).run(reason, paymentId);
+
+      result = {
+        success: true,
+        paymentId,
+        orderId: pay.order_id,
+        orderNumber: pay.order_number,
+        reversedAmountCents: pay.amount_cents,
+        newPaidCents: newPaid,
+        remainingBalanceCents: pay.total_cents - newPaid
+      };
+    });
+
+    voidTx();
+    return result;
+  }
+
+  /**
    * Dynamically calculates working capital, AR, AP, and overdue positions.
    */
   getFinancialSummary(businessId) {

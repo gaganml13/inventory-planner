@@ -195,6 +195,39 @@ function createOrderRouter(db) {
     }
   });
 
+  /** POST /api/orders/:id/unconfirm (Revert Confirmed Order to Draft) */
+  router.post('/:id/unconfirm', (req, res) => {
+    try {
+      const bizId = getBizId(req);
+      const reverted = service.unconfirmOrder(parseInt(req.params.id, 10), bizId);
+      res.json(reverted);
+    } catch (err) {
+      if (err.code === 'ORDER_NOT_FOUND') {
+        return res.status(404).json({ error: true, message: err.message, code: err.code });
+      }
+      res.status(400).json({ error: true, message: err.message, code: err.code });
+    }
+  });
+
+  /** POST /api/orders/:id/void-and-revert (Atomic Void of Payments, Receipts, and Fulfillment) */
+  router.post('/:id/void-and-revert', (req, res) => {
+    try {
+      const bizId = getBizId(req);
+      const { reason } = req.body;
+      const reverted = service.voidAndRevertOrder({
+        orderId: parseInt(req.params.id, 10),
+        businessId: bizId,
+        reason: reason || 'User requested order void and reset to draft'
+      });
+      res.json(reverted);
+    } catch (err) {
+      if (err.code === 'ORDER_NOT_FOUND') {
+        return res.status(404).json({ error: true, message: err.message, code: err.code });
+      }
+      res.status(400).json({ error: true, message: err.message, code: err.code });
+    }
+  });
+
   return router;
 }
 

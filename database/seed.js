@@ -403,6 +403,87 @@ function seedDatabase(customDb) {
 
     // Record the $1,500 advance deposit
     paymentInsert.run(poId, 150000, 'BANK_TRANSFER', 'Advance supplier payment deposit', poDate);
+
+    // 9. Seed B2B Wholesale Profile & Listings
+    db.prepare(`
+      INSERT OR REPLACE INTO b2b_profiles (
+        business_id, public_name, category, city, gst_or_reg_no, is_verified, min_order_cents, delivery_days, is_public, description
+      ) VALUES (?, ?, ?, ?, ?, 1, 25000, 2, 1, ?)
+    `).run(
+      businessId,
+      'Vanguard Wholesale Distribution Corp',
+      'Industrial, IT & Workplace Consumables',
+      'Seattle Distribution Center (Metro Hub)',
+      'GST-9921-VAN-01',
+      'Premier regional B2B wholesale fulfillment hub supplying high-velocity commercial goods with verified 48h dispatch.'
+    );
+
+    // List 4 core products on B2B
+    const b2bListSkus = ['CONS-COPY-A4', 'ELEC-USB-C2M', 'ELEC-HDMI-4K', 'SAFE-HELM-PRO'];
+    for (const sku of b2bListSkus) {
+      const p = productMap[sku];
+      if (p) {
+        db.prepare(`
+          UPDATE products 
+          SET is_b2b_listed = 1, b2b_price_cents = ?, b2b_moq = 5
+          WHERE id = ?
+        `).run(Math.round(p.sell_price_cents * 0.85), p.id);
+      }
+    }
+
+    // Seed Verified Partner B2B Business (Pacific Coast Trade Logistics)
+    const existingPartner = db.prepare("SELECT id FROM businesses WHERE slug = 'partner-pacific-wholesale' LIMIT 1").get();
+    let partnerBizId;
+    if (!existingPartner) {
+      const pRes = db.prepare(`
+        INSERT INTO businesses (name, slug, currency, timezone, operating_cash_cents, cash_reserve_cents, is_demo)
+        VALUES ('Pacific Coast Trade Logistics', 'partner-pacific-wholesale', 'USD', 'America/Los_Angeles', 25000000, 5000000, 0)
+      `).run();
+      partnerBizId = pRes.lastInsertRowid;
+    } else {
+      partnerBizId = existingPartner.id;
+    }
+
+    db.prepare(`
+      INSERT OR REPLACE INTO b2b_profiles (
+        business_id, public_name, category, city, gst_or_reg_no, is_verified, min_order_cents, delivery_days, is_public, description
+      ) VALUES (?, ?, ?, ?, ?, 1, 15000, 3, 1, ?)
+    `).run(
+      partnerBizId,
+      'Pacific Coast Trade Logistics',
+      'Office Automation, Cables & Safety Hardware',
+      'Portland Logistics Park',
+      'GST-8812-PAC-02',
+      'Direct manufacturer distributor with nationwide pallet shipping and verified stock guarantees.'
+    );
+
+    // Partner products (matching SKUs to enable Smart Restock Matches!)
+    const partnerProducts = [
+      { sku: 'CONS-COPY-A4', name: 'A4 Bright White Paper (500s Ream)', cat: 'Consumables', b2bPrice: 520, moq: 10, stock: 850 },
+      { sku: 'ELEC-MECH-KB', name: 'Ergonomic Mechanical Keyboard', cat: 'Electronics', b2bPrice: 4200, moq: 2, stock: 120 },
+      { sku: 'SAFE-VEST-HIV', name: 'High-Visibility Safety Vest (Class 2)', cat: 'Safety Gear', b2bPrice: 850, moq: 5, stock: 400 }
+    ];
+
+    for (const pp of partnerProducts) {
+      const existProd = db.prepare('SELECT id FROM products WHERE business_id = ? AND sku = ?').get(partnerBizId, pp.sku);
+      let ppId;
+      if (!existProd) {
+        const ins = db.prepare(`
+          INSERT INTO products (
+            business_id, sku, barcode, name, category, base_unit, pack_size, lead_days,
+            min_safety_stock, cost_price_cents, sell_price_cents, is_b2b_listed, b2b_price_cents, b2b_moq
+          ) VALUES (?, ?, ?, ?, ?, 'units', 5, 3, 10, ?, ?, 1, ?, ?)
+        `).run(
+          partnerBizId, pp.sku, pp.sku, pp.name, pp.cat,
+          Math.round(pp.b2bPrice * 0.75), pp.b2bPrice, pp.b2bPrice, pp.moq
+        );
+        ppId = ins.lastInsertRowid;
+        db.prepare(`
+          INSERT INTO stock_movements (business_id, product_id, location_id, change_qty, balance_after, reason)
+          VALUES (?, ?, 1, ?, ?, 'INITIAL_B2B_PARTNER_STOCK')
+        `).run(partnerBizId, ppId, pp.stock, pp.stock);
+      }
+    }
   });
 
   seedTx();

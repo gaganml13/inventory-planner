@@ -6,7 +6,7 @@
 
 const express = require('express');
 const ImportService = require('./import_service');
-const { extractTextFromPdfBuffer, parseLinesToProducts } = require('./document_parser');
+const { extractTextFromPdfBuffer, parseLinesToProducts, parseOrderDocumentLines } = require('./document_parser');
 
 function createDataRouter(db) {
   const router = express.Router();
@@ -248,6 +248,126 @@ function createDataRouter(db) {
     } catch (err) {
       res.status(500).json({ error: true, message: err.message, code: 'PARSE_FAILED' });
     }
+  });
+
+  /**
+   * POST /api/data/parse-order-document
+   * Body: { document_base64, file_type, file_name, text_content, order_type }
+   */
+  router.post('/parse-order-document', (req, res) => {
+    try {
+      const bizId = getBizId(req);
+      const { document_base64, file_type, file_name, text_content, order_type } = req.body;
+      let text = text_content || '';
+
+      if (document_base64) {
+        const buffer = Buffer.from(document_base64, 'base64');
+        const isPdf = (file_type && file_type.toLowerCase().includes('pdf')) || (file_name && file_name.toLowerCase().endsWith('.pdf')) || buffer.subarray(0, 5).toString() === '%PDF-';
+        if (isPdf) {
+          text = extractTextFromPdfBuffer(buffer);
+        } else {
+          text = buffer.toString('utf-8');
+        }
+      }
+
+      if (!text || !text.trim()) {
+        return res.status(400).json({ error: true, message: 'Could not extract text lines from document', code: 'EMPTY_DOCUMENT' });
+      }
+
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const existingProducts = db.prepare('SELECT id, sku, barcode, name, cost_price_cents, sell_price_cents, pack_size FROM products WHERE business_id = ? AND is_archived = 0').all(bizId);
+      const items = parseOrderDocumentLines(lines, existingProducts);
+
+      // Load contacts for dropdown
+      const contactType = order_type === 'SALE' ? 'CUSTOMER' : 'SUPPLIER';
+      const contacts = db.prepare('SELECT id, name, type, payment_terms_days FROM contacts WHERE business_id = ? AND (type = ? OR type IS NULL)').all(bizId, contactType);
+
+      res.json({
+        success: true,
+        count: items.length,
+        filename: file_name || 'order_document',
+        orderType: order_type || 'PURCHASE',
+        items,
+        contacts,
+        allProducts: existingProducts.map(p => ({ id: p.id, sku: p.sku, name: p.name, pack_size: p.pack_size, cost_price_cents: p.cost_price_cents, sell_price_cents: p.sell_price_cents }))
+      });
+    } catch (err) {
+      res.status(500).json({ error: true, message: err.message, code: 'PARSE_FAILED' });
+    }
+  });
+
+  /**
+   * GET /api/data/templates/sample-order.csv
+   */
+  router.get('/templates/sample-order.csv', (req, res) => {
+    const csvContent = [
+      'SKU,Product Name,Quantity,Unit Price',
+      'CONS-COPY-A4,A4 Bright White Paper (500s Ream),25,3.20',
+      'ELEC-USB-C2M,USB-C Fast Charging Cable 2M,50,4.50',
+      'ELEC-HDMI-4K,Braided HDMI 2.1 Cable 4K/120Hz,30,6.00',
+      'SAFE-HELM-PRO,Industrial Safety Helmet (ANSI Z89.1),15,14.50'
+    ].join('\r\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="sample_order_template.csv"');
+    res.send(csvContent);
+  });
+
+  /**
+   * GET /api/data/templates/sample-order.pdf
+   */
+  router.get('/templates/sample-order.pdf', (req, res) => {
+    // Generate a simple valid uncompressed PDF with order items
+    const streamContent = [
+      'BT',
+      '/F1 16 Tf',
+      '50 750 Td',
+      '(COMMERCIAL WHOLESALE ORDER / INVOICE) Tj',
+      '/F1 10 Tf',
+      '0 -25 Td',
+      '(Date: 2026-11-08  |  Terms: Net 30 Days) Tj',
+      '0 -30 Td',
+      '(SKU                  Description                             Qty     Unit Price) Tj',
+      '0 -15 Td',
+      '(--------------------------------------------------------------------------------) Tj',
+      '0 -20 Td',
+      '(CONS-COPY-A4         A4 Bright White Paper 500s              25        $3.20) Tj',
+      '0 -18 Td',
+      '(ELEC-USB-C2M         USB-C Fast Charging Cable 2M            50        $4.50) Tj',
+      '0 -18 Td',
+      '(ELEC-HDMI-4K         Braided HDMI 2.1 Cable 4K               30        $6.00) Tj',
+      '0 -18 Td',
+      '(SAFE-HELM-PRO        Industrial Safety Helmet                15       $14.50) Tj',
+      'ET'
+    ].join('\n');
+
+    const streamLen = streamContent.length;
+    const pdf = [
+      '%PDF-1.4',
+      '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+      '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj',
+      '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj',
+      `4 0 obj << /Length ${streamLen} >> stream`,
+      streamContent,
+      'endstream endobj',
+      '5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj',
+      'xref',
+      '0 6',
+      '0000000000 65535 f ',
+      '0000000009 00000 n ',
+      '0000000058 00000 n ',
+      '0000000115 00000 n ',
+      '0000000244 00000 n ',
+      '0000000350 00000 n ',
+      'trailer << /Size 6 /Root 1 0 R >>',
+      'startxref',
+      '425',
+      '%%EOF'
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="sample_order_invoice.pdf"');
+    res.send(Buffer.from(pdf, 'utf-8'));
   });
 
   return router;

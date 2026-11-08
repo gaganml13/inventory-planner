@@ -34,6 +34,7 @@ const createContactRouter = require('./modules/contacts/routes');
 const createDataRouter = require('./modules/data/routes');
 const createIntelligenceRouter = require('./modules/intelligence/routes');
 const createAssistantRouter = require('./modules/assistant/routes');
+const createB2bRouter = require('./modules/b2b/routes');
 
 const InventoryService = require('./modules/inventory/inventory_service');
 const PaymentService = require('./modules/payments/payment_service');
@@ -105,6 +106,7 @@ function createApp(customDb) {
   app.use('/api/data', requireAuth, createDataRouter(db));
   app.use('/api/intelligence', requireAuth, createIntelligenceRouter(db));
   app.use('/api/assistant', requireAuth, createAssistantRouter(db));
+  app.use('/api/b2b', requireAuth, createB2bRouter(db));
 
   // Legacy & Overview Helper APIs
   const getBizId = (req) => {
