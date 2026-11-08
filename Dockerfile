@@ -1,5 +1,5 @@
-# Multi-runtime production container: Node.js 20 + Python 3.11 on Debian Bookworm
-FROM node:20-bookworm
+# Multi-runtime production container: Node.js 22 (native node:sqlite) + Python 3.11 on Debian Bookworm
+FROM node:22-bookworm
 
 # Install Python 3.11, pip, python-is-python3 symlink, and C/OpenMP dependencies (libgomp1 required for LightGBM)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -9,6 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
+
+# Ensure persistent data directory exists with full write permissions for SQLite database and WAL files
+RUN mkdir -p /data && chmod 777 /data
 
 # Set application directory
 WORKDIR /app
@@ -26,7 +29,8 @@ COPY . .
 
 # Set default production environment variables
 ENV NODE_ENV=production \
-    PORT=3000
+    PORT=3000 \
+    HOST=0.0.0.0
 
 # Expose HTTP port
 EXPOSE 3000
