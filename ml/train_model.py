@@ -66,8 +66,12 @@ except (ImportError, OSError):
 
 # Helper to find default database file
 def resolve_db_path(cli_db):
-    if cli_db and os.path.exists(cli_db):
-        return cli_db
+    if cli_db:
+        return os.path.abspath(cli_db)
+    data_dir = os.environ.get('DATA_DIR')
+    if data_dir:
+        os.makedirs(data_dir, exist_ok=True)
+        return os.path.abspath(os.path.join(data_dir, 'inventory.db'))
     candidates = [
         os.path.join(os.getcwd(), 'inventory.db'),
         os.path.join(os.path.dirname(__file__), '..', 'inventory.db'),
@@ -79,7 +83,9 @@ def resolve_db_path(cli_db):
     return os.path.abspath(candidates[0])
 
 def get_db(db_path):
-    conn = sqlite3.connect(db_path)
+    resolved = os.path.abspath(db_path)
+    os.makedirs(os.path.dirname(resolved), exist_ok=True)
+    conn = sqlite3.connect(resolved)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -859,7 +865,7 @@ def main():
     # 1. Check sales history
     sales_days = check_sales_history_days(conn, biz_id)
     synthesized_orders = 0
-    if sales_days < 60:
+    if sales_days < 30:
         synthesized_orders = synthesize_120_days_sales(conn, biz_id)
 
     # 2. Extract contiguous daily series per SKU

@@ -53,6 +53,11 @@ function createApp(customDb) {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
 
+  // Lightweight health check endpoint for Docker / Render container probes
+  app.get('/health', (req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+  });
+
   // Global Session Authentication (populates req.user & req.business if session exists)
   app.use(authenticate);
 

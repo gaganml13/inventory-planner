@@ -15,7 +15,20 @@
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = path.join(__dirname, 'inventory.db');
+function resolveDbPath() {
+  if (process.env.DATA_DIR) {
+    try {
+      fs.mkdirSync(process.env.DATA_DIR, { recursive: true });
+    } catch (_) {}
+    return path.join(process.env.DATA_DIR, 'inventory.db');
+  }
+  if (process.env.DB_PATH) {
+    return process.env.DB_PATH;
+  }
+  return path.join(__dirname, 'inventory.db');
+}
+
+const DB_PATH = resolveDbPath();
 
 let dbInstance = null;
 

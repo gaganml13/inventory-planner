@@ -13,13 +13,31 @@
 const path = require('path');
 const fs = require('fs');
 
-const DEFAULT_DB_PATH = process.env.NODE_ENV === 'test'
-  ? path.join(__dirname, '..', 'test_inventory.db')
-  : path.join(__dirname, '..', 'inventory.db');
+function resolveDefaultDbPath() {
+  if (process.env.DATA_DIR) {
+    try {
+      fs.mkdirSync(process.env.DATA_DIR, { recursive: true });
+    } catch (_) {}
+    return process.env.NODE_ENV === 'test'
+      ? path.join(process.env.DATA_DIR, 'test_inventory.db')
+      : path.join(process.env.DATA_DIR, 'inventory.db');
+  }
+  return process.env.NODE_ENV === 'test'
+    ? path.join(__dirname, '..', 'test_inventory.db')
+    : path.join(__dirname, '..', 'inventory.db');
+}
+
+const DEFAULT_DB_PATH = resolveDefaultDbPath();
 
 class DatabaseConnection {
   constructor(customPath) {
-    this.dbPath = customPath || process.env.DB_PATH || DEFAULT_DB_PATH;
+    this.dbPath = customPath || process.env.DB_PATH || resolveDefaultDbPath();
+    const dir = path.dirname(this.dbPath);
+    if (dir && !fs.existsSync(dir)) {
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+      } catch (_) {}
+    }
     this.rawDb = null;
     this.isBetterSqlite = false;
     this.init();

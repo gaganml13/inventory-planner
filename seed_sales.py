@@ -1,6 +1,9 @@
-import sqlite3, datetime, random
+import sqlite3, datetime, random, os
 
-conn = sqlite3.connect('inventory.db')
+db_path = os.path.join(os.environ['DATA_DIR'], 'inventory.db') if os.environ.get('DATA_DIR') else 'inventory.db'
+if os.path.dirname(db_path):
+    os.makedirs(os.path.dirname(os.path.abspath(db_path)), exist_ok=True)
+conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
 # Find business ID

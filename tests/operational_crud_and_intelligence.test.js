@@ -239,18 +239,23 @@ test('Operational Features & Resilient APIs', async (t) => {
     assert.equal(delContactData.success, true);
 
     // 8. Stock Adjustment with Custom Count & Audit Reason
+    const preAdjustRes = await fetch(`${baseUrl}/api/inventory/positions/${sampleProduct.product_id}`, {
+      headers: { 'Cookie': cookie }
+    });
+    const currentSampleProd = await preAdjustRes.json();
+
     const adjustRes = await fetch(`${baseUrl}/api/inventory/adjust`, {
       method: 'POST',
       headers: { 'Cookie': cookie, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         product_id: sampleProduct.product_id,
-        new_on_hand: sampleProduct.on_hand + 5,
+        new_on_hand: currentSampleProd.on_hand + 5,
         reason: 'Physical Recount'
       })
     });
     assert.equal(adjustRes.status, 200);
     const adjustedProd = await adjustRes.json();
-    assert.equal(adjustedProd.on_hand, sampleProduct.on_hand + 5);
+    assert.equal(adjustedProd.on_hand, currentSampleProd.on_hand + 5);
 
   } finally {
     server.close();

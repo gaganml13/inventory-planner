@@ -1609,10 +1609,19 @@ const App = (() => {
         const diag = await api('/api/intelligence/model-diagnostics');
         if (diag && diag.success) {
           if ($('diagAlgorithm')) $('diagAlgorithm').textContent = diag.modelName || 'LightGBM';
-          if ($('diagTrainingVolume')) $('diagTrainingVolume').textContent = `${(diag.trainingRecords || 1440).toLocaleString()} daily records`;
-          if ($('diagSplit')) $('diagSplit').textContent = `${diag.testRecords || 360} test records (80/20 split)`;
-          if ($('diagTestPerformance')) $('diagTestPerformance').textContent = `ML: ${diag.mlMae || 1.8} pcs vs Base: ${diag.baselineMae || 4.6} pcs`;
-          if ($('diagImprovementBadge')) $('diagImprovementBadge').textContent = `${diag.improvementPct || 60.8}% error reduction`;
+          if ($('diagTrainingVolume')) $('diagTrainingVolume').textContent = `${(diag.trainingRecords || 0).toLocaleString()} daily records`;
+          if ($('diagSplit')) $('diagSplit').textContent = `${diag.testRecords || 0} test records (80/20 split)`;
+          if ($('diagTestPerformance')) $('diagTestPerformance').textContent = `ML: ${diag.mlMae ?? 0} pcs vs Base: ${diag.baselineMae ?? 0} pcs`;
+          if ($('diagImprovementBadge')) {
+            const imp = typeof diag.improvementPct === 'number' ? diag.improvementPct : 0;
+            if (imp > 0) {
+              $('diagImprovementBadge').textContent = `${imp.toFixed(1)}% error reduction`;
+              $('diagImprovementBadge').className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800';
+            } else {
+              $('diagImprovementBadge').textContent = 'Baseline 7d SMA benchmark';
+              $('diagImprovementBadge').className = 'px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700';
+            }
+          }
           if ($('diagStatus')) $('diagStatus').textContent = diag.status || 'Trained & Synchronized to SQLite';
           if ($('diagLastUpdated') && diag.createdAt) {
             $('diagLastUpdated').textContent = new Date(diag.createdAt).toLocaleDateString();

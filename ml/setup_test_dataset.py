@@ -22,8 +22,12 @@ import math
 from datetime import datetime, timedelta
 
 def resolve_db_path(cli_db):
-    if cli_db and os.path.exists(cli_db):
-        return cli_db
+    if cli_db:
+        return os.path.abspath(cli_db)
+    data_dir = os.environ.get('DATA_DIR')
+    if data_dir:
+        os.makedirs(data_dir, exist_ok=True)
+        return os.path.abspath(os.path.join(data_dir, 'inventory.db'))
     candidates = [
         os.path.join(os.getcwd(), 'inventory.db'),
         os.path.join(os.path.dirname(__file__), '..', 'inventory.db'),

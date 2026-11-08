@@ -1,0 +1,38 @@
+# Node dependencies & logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local SQLite databases (prevent committing local development/test data)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+inventory.db*
+test_inventory.db*
+
+# Git repository & secrets
+.git/
+.gitignore
+.gitattributes
+.env
+.env.*
+*.local
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Scratch & temporary files
+scratch/
+tmp/
+.DS_Store
+Thumbs.db

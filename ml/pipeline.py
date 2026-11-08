@@ -18,9 +18,11 @@ from forecaster import DemandForecaster
 from replenishment import evaluate_replenishment_candidate, prioritize_recommendations_by_capital
 
 def get_db_connection(db_path):
-    if not os.path.exists(db_path):
-        raise FileNotFoundError(f"Database file not found at {db_path}")
-    conn = sqlite3.connect(db_path)
+    resolved = os.path.abspath(db_path)
+    os.makedirs(os.path.dirname(resolved), exist_ok=True)
+    if not os.path.exists(resolved):
+        raise FileNotFoundError(f"Database file not found at {resolved}")
+    conn = sqlite3.connect(resolved)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -208,7 +210,12 @@ def run_pipeline(db_path, business_id=1, horizon_days=14):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Smart Business Manager Demand Forecaster')
-    parser.add_argument('--db', default=os.path.join(os.path.dirname(__file__), '..', 'inventory.db'), help='Path to SQLite database')
+    default_db = (
+        os.path.join(os.environ['DATA_DIR'], 'inventory.db')
+        if os.environ.get('DATA_DIR')
+        else os.path.join(os.path.dirname(__file__), '..', 'inventory.db')
+    )
+    parser.add_argument('--db', default=default_db, help='Path to SQLite database')
     parser.add_argument('--business-id', type=int, default=1, help='Tenant business ID')
     parser.add_argument('--horizon', type=int, default=14, help='Forecast horizon in days')
     args = parser.parse_args()

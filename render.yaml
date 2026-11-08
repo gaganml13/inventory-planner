@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: smart-business-manager
+    env: docker
+    plan: starter
+    region: oregon
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    disk:
+      name: inventory-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: DATA_DIR
+        value: /data
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /health

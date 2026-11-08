@@ -27,15 +27,23 @@ function createIntelligenceRouter(db) {
     return parseInt(req.query.business_id || req.body?.business_id || 1, 10);
   };
 
+  const getPythonBin = () => process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
+  const getActiveDbPath = () => {
+    if (db && db.dbPath) return db.dbPath;
+    if (process.env.DATA_DIR) return path.join(process.env.DATA_DIR, 'inventory.db');
+    if (process.env.DB_PATH) return process.env.DB_PATH;
+    return path.join(__dirname, '..', '..', '..', 'inventory.db');
+  };
+
   /** Helper: Run Pipeline with robust error handling and fallback */
   const runPipelineHandler = (req, res) => {
     const bizId = getBizId(req);
     const pythonScript = path.join(__dirname, '..', '..', '..', 'ml', 'train_model.py');
-    const dbPath = path.join(__dirname, '..', '..', '..', 'inventory.db');
+    const dbPath = getActiveDbPath();
 
     // Attempt Python CLI execution
     try {
-      execFile('python', [pythonScript, `--business_id=${bizId}`, `--db=${dbPath}`], { timeout: 25000 }, (error, stdout, stderr) => {
+      execFile(getPythonBin(), [pythonScript, `--business_id=${bizId}`, `--db=${dbPath}`], { timeout: 25000 }, (error, stdout, stderr) => {
         if (!error) {
           try {
             const parsed = JSON.parse(stdout);
@@ -109,10 +117,10 @@ function createIntelligenceRouter(db) {
   router.post('/run-pipeline', (req, res) => {
     const bizId = getBizId(req);
     const pythonScript = path.join(__dirname, '..', '..', '..', 'ml', 'train_model.py');
-    const dbPath = path.join(__dirname, '..', '..', '..', 'inventory.db');
+    const dbPath = getActiveDbPath();
 
     try {
-      execFile('python', [pythonScript, `--business_id=${bizId}`, `--db=${dbPath}`], { timeout: 30000 }, (error, stdout, stderr) => {
+      execFile(getPythonBin(), [pythonScript, `--business_id=${bizId}`, `--db=${dbPath}`], { timeout: 30000 }, (error, stdout, stderr) => {
         if (error) {
           // If Python fails, return clean JSON (never unhandled HTML 500 pages)
           const errMsg = (stderr && stderr.trim()) || error.message || 'Python execution failed';

@@ -158,7 +158,7 @@ function seedDatabase(customDb) {
       'SAFE-VEST-HIV': 450
     };
 
-    const initialTimestamp = new Date(now.getTime() - 60 * dayMs).toISOString();
+    const initialTimestamp = new Date(now.getTime() - 70 * dayMs).toISOString();
 
     const moveInsert = db.prepare(`
       INSERT INTO stock_movements (
@@ -207,7 +207,7 @@ function seedDatabase(customDb) {
     const customers = [custMetro, custCoast, custCascade, custSummit];
     let orderSeq = 1000;
 
-    for (let dayOffset = 55; dayOffset >= 5; dayOffset--) {
+    for (let dayOffset = 65; dayOffset >= 5; dayOffset--) {
       const orderDate = new Date(now.getTime() - dayOffset * dayMs);
       const dayOfWeek = orderDate.getUTCDay(); // 0 is Sunday, 6 is Saturday
       // Wholesale demand is higher on Tue-Fri
