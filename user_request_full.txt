@@ -1,0 +1,152 @@
+<USER_REQUEST>
+Review our existing repository in `./inventory-planner` and complete the application according to the strict specifications below. **Implement the actual code changes across the frontend, backend, database, and ML scripts—do not just suggest them.** Reuse our existing Node.js/Express + SQLite + Vanilla JS + Python ML stack. Preserve working functionality and fix existing modules before creating any new files. Do NOT add an LLM.
+
+---
+
+### PHASE 0: REPOSITORY AUDIT FIRST
+Before writing code, inspect:
+- `database/migrations/` and database connection logic
+- `src/modules/` (routes, controllers, services, auth/permissions)
+- `src/public/ index.html`, `css/`, and `js/`
+- `ml/train_model.py` and `tests/`
+
+Briefly classify each of the 6 core areas below as **Working**, **Partial**, **Missing**, or **Unverified** with exact file and line references, then immediately execute Phases 1 through 6.
+
+---
+
+### PHASE 1: FIX SETTINGS, TEAM, BRANDING & ACCOUNT MANAGEMENT
+1. **Rebrand Default/Demo Tenant:**
+   - Replace all occurrences of `"Apex Wholesale"` across the database seeders, backend defaults, and frontend HTML/JS with **"Vanguard Wholesale Distribution"** (and keep user-configured names like `AlgoTraders` intact for private workspaces).
+   - Fix the top-left badge: only show the yellow `Demo Guest` badge when logged into the actual Demo account. When logged into a real account (e.g., `gagan@gmail.com`), show the user's role badge (e.g., `Owner` / `Active Workspace`).
+
+2. **Fix Blank Settings & Persistent "Loading team members...":**
+   - Investigate why **Settings & Team** inputs load blank and Team & Role Access hangs on `"Loading team members..."`.
+   - Distinguish between loading states, missing configuration, API failures, and genuine `$0.00` balances.
+   - Ensure `GET /api/settings` and `PUT /api/settings` properly load and persist:
+     * **Business Name** (`business_name`)
+     * **Operating Currency** (`currency` — prevent currency changes from silently relabelling historical transaction amounts without explicit notice)
+     * **Timezone** (`timezone`)
+     * **Cash Available ($)** (formerly "Operating Cash Balance" — treat opening cash as an initial recorded balance; dynamically update current cash through verified customer/supplier payments and audited corrections)
+     * **Minimum Cash Reserve ($)** (formerly "Mandatory Cash Reserve Buffer")
+     * **Adjustment Approval Limit ($)** (formerly "Approval Threshold")
+     * **Supplier Delivery Time (Days)** (formerly "Default Lead Time")
+     * **Payment Terms (Days)** (formerly "Default Terms")
+   - Rename complex labels to the plain-language labels above and add concise helper text with concrete examples under each input.
+   - Verify settings survive page refresh and re-login.
+
+3. **Unify Purchasing Budget Math:**
+   - Use one consistent formula across Settings, Top Header, Overview Dashboard, and Purchase Recommendations:
+     $$\text{Purchasing Budget (Safe to Spend)} = \max(0, \text{Cash Available} - \text{Minimum Cash Reserve} - \text{Confirmed 14-Day Payables})$$
+   - **Critical Fix:** Do NOT include `DRAFT` Purchase Orders (like `PO-771581` for `$720,000.00`) in "Upcoming Obligations (14-Day AP)" or deduct them from Free Capital until the PO is explicitly **Approved/Confirmed**. Explain the planning period, obligations, reserve, and commitments in a tooltip/breakdown without double-counting.
+
+4. **Complete Team Access & Role Permissions + Personal Account Management:**
+   - Fix the Team list loader so existing users render immediately with role badges (`OWNER`, `PURCHASING`, `WAREHOUSE`) and status (`Active` / `Deactivated`).
+   - Implement working `+ Add User` / invitation modal, role assignment, and user deactivation.
+   - Enforce server-side middleware permissions:
+     * `OWNER`: Full access, settings, team management, high-value stock count approvals.
+     * `PURCHASING`: Catalog, POs, suppliers, demand planning.
+     * `WAREHOUSE`: Receiving, shipments, physical stock counts/adjustments.
+   - Enforce strict `business_id` isolation on every query to prevent cross-business access.
+   - **Add Personal Account Management Modal/Section:** Clicking the user profile card at the bottom-left (`AlgoTraders / gagan@gmail.com`) or a dedicated "Account Profile" tab must allow the logged-in user to view and edit their personal details (Full Name, Email, Password/PIN, Notification Preferences, Role view).
+
+---
+
+### PHASE 2: COMPLETE THE CORE BUSINESS WORKFLOW (TRANSACTIONS & LEDGERS)
+Connect products, customers, suppliers, purchase orders, receipts, sales orders, shipments, invoices, and payments via reliable foreign-key IDs. Separate **order creation**, **physical stock movement**, **invoicing**, and **payment** into explicit events:
+
+1. **Order Lifecycle States:**
+   - Support `DRAFT`, `APPROVED` (or `CONFIRMED`), `PARTIALLY_COMPLETED`, `COMPLETED` (`FULFILLED`), and `CANCELLED`.
+   - Creating a `DRAFT` PO or Sales Order must NOT alter physical `on_hand` stock or confirmed AP/AR balances.
+2. **Inventory Quantities & Pack Conversions:**
+   - Explicitly track and display per SKU: **On-Hand**, **Reserved** (allocated to approved sales orders), **Available** ($\text{On-Hand} - \text{Reserved}$), **Damaged**, and **Incoming** (from approved/partially received POs).
+   - Maintain consistent base units and `pack_size` conversions across purchasing, receiving, selling, and forecasting.
+3. **Partial Receiving, Shipping, Returns & Credit Adjustments:**
+   - Support partial PO receiving (increments `on_hand`, decrements `incoming`, updates PO to `PARTIALLY_COMPLETED` until full quantity arrives).
+   - Support Sales Order reservation on approval (increments `reserved`, reduces `available`), and physical shipment (decrements `on_hand` and `reserved`).
+   - Support customer returns, supplier returns/credit notes, and partial invoice/bill payments in `Payments & Cash Flow`.
+4. **Validated CSV Import & Export + Archiving:**
+   - Upgrade CSV import with a preview table, row-level validation errors, and duplicate SKU/order prevention. Add a working **Export CSV** button for Catalog, Orders, and Ledger.
+   - If a product has transaction history, replace hard `Delete` with **Archive** so historical ledger integrity is never broken. Support traceable reversals for posted records.
+   - Wrap stock and payment updates in atomic SQLite transactions (`BEGIN IMMEDIATE ... COMMIT`) to prevent concurrent overselling or duplicate double-click submissions.
+
+---
+
+### PHASE 3: COMPLETE STOCK ACCURACY, BLIND COUNTS & APPROVAL WORKFLOW
+1. **Scheduled & Blind Physical Counts ("Start Audit" Workflow):**
+   - Wire the **"Start Audit →"** button on the dashboard and **"Adjust Stock Count"** in Catalog to a structured Stock Count workflow.
+   - Support **Blind Counting** (hide expected system on-hand quantities from the counter during input), freeze a stock snapshot timestamp, and account for any stock movements during the count window.
+2. **Discrepancy Cases & Owner Approval Threshold:**
+   - When counted quantity differs from expected snapshot quantity, generate a **Discrepancy Case** recording: variance units, variance cost value ($), reason code (`Damaged`, `Misplaced`, `Supplier Short-Ship`, `Data Entry Error`, `Recount Needed`), notes/evidence, and reviewer.
+   - Frame discrepancies neutrally as *"Variance to investigate"*, never proof of theft.
+   - If $|\text{Variance Value}| > \text{Adjustment Approval Limit}$, set status to `PENDING_OWNER_APPROVAL` and require an `OWNER` role to approve before `on_hand` is updated.
+3. **Immutable Audit Trail & Ageing Reports:**
+   - Log every stock change in `Stock Movements Ledger` with User, Timestamp, SKU, Delta Qty, Running Balance, Location/Bin, Reason, and Source Document ID (`PO-xxx`, `SO-xxx`, `CNT-xxx`).
+   - Add an **Inventory Ageing & Slow-Moving Stock** filter/tab in Catalog & Inventory. Make location/bin and batch/expiry fields optional per product.
+
+---
+
+### PHASE 4: VERIFY DEMAND PLANNING & HONEST ML FORECASTING
+Fix `./ml/train_model.py` and the **Demand Planning** view so all metrics are genuine, mathematically sound, and transparent:
+1. **Accurate Model Classification & Selection per SKU:**
+   - Do NOT label steady or high-velocity continuous SKUs (`TEST-FAST-01`, `TEST-STEADY-02`) as `CROSTON_INTERMITTENT` with `100%` uncertainty.
+   - Classify each SKU based on its actual historical zero-demand intervals (ADI and $CV^2$):
+     * **Smooth / Continuous (`ADI < 1.32`):** Train our **LightGBM / HistGradientBoosting** regressor (using lags 1, 2, 7, 14, 28 + 7d/14d rolling mean & std + day-of-week features) and compare against a **7-Day Simple Moving Average** baseline via strict chronological backtesting (80% train / 20% test, zero future leakage).
+     * **Intermittent / Lumpy (`ADI >= 1.32`):** Use **Croston / SBA (Syntetos-Boylan Approximation)** or empirical quantile bootstrapping.
+     * **New / Short History (`< 14 days`):** Use explicit `COLD_START_FALLBACK` with category/manual velocity defaults.
+   - Adjust for stockout-censored days (do not treat days when `on_hand == 0` as zero true demand).
+2. **Honest P50 / P90 Quantiles & Diagnostic Transparency:**
+   - Compute real **P50** (median expected demand) and **P90** (90th percentile upper bound from empirical backtest residuals or quantile loss).
+   - Clicking **Technical Model Details & Validation Diagnostics** or **Inspect** on any SKU must show:
+     * Active Model Selected & Why (e.g., `LightGBM (Beat 7d-SMA baseline by 38.4% MAE)`)
+     * Last Training Timestamp, Days of History Used, Forecast Horizon (14d)
+     * Chronological Backtest MAE, RMSE, and WAPE vs. Baseline
+3. **Transparent Reorder Point & Order Quantity Math:**
+   - Clearly separate **"Available Now"** ($\text{On-Hand} - \text{Reserved}$) from **"Reorder Needed"**.
+   - Calculate and display the exact step-by-step formula in the SKU inspection drawer:
+     * $\text{Lead Time Demand} = \text{Daily Forecast} \times (\text{Lead Time} + \text{Review Period})$
+     * $\text{Safety Stock} = Z_{90} \times \sigma_{\text{error}} \times \sqrt{\text{Lead Time}}$
+     * $\text{Net Requirement} = (\text{Lead Time Demand} + \text{Safety Stock}) - (\text{Available Now} + \text{Incoming On-Order})$
+     * Round up to `pack_size` and enforce supplier `MOQ` and `Purchasing Budget` constraints.
+   - Prevent duplicate Draft PO creation if an open Draft PO already covers the SKU.
+   - Keep synthetic benchmark data clearly badged as `BENCHMARK_DATA` and isolated from real transactions.
+
+---
+
+### PHASE 5: UI, COLLAPSIBLE SIDEBAR, WORKING SEARCH & MODERN UX
+Keep the clean light theme and indigo accents, and fix all visual and usability bugs seen in our screenshots:
+1. **Collapsible Sidebar Toggle:**
+   - Next to the `AlgoTraders` / `Vanguard Wholesale` header in the left sidebar, add a clean **Sidebar Collapse/Expand Toggle Button** (`«` / `»` or panel icon) so users can collapse the sidebar into a compact icon bar (or hide it) to view the full-width dashboard and wide tables comfortably.
+2. **Fix Global Search Across Overview & All Views:**
+   - Wire the top search bar (`Search SKU, product name, or barcode... (/)`) so typing filters items in real time on **Overview & Replenishment** (filtering Reorder Priorities & Recommendations), **Catalog & Inventory**, **Purchase Orders**, **Sales Orders**, and **Demand Planning**—or opens a fast global jump-to-SKU dropdown with keyboard shortcut `/` support.
+3. **Fix Table Clipping, Sticky Columns & Drawer Layout:**
+   - Fix the horizontal overflow in **Catalog & Inventory** where the `Delete` button is clipped. Make the **SKU / Product Name** column sticky on the left and the **Actions** column sticky on the right (or place secondary actions like Archive/History into a clean `⋯` dropdown menu while keeping the primary action first).
+   - Add column sorting, status filters, pagination, and selectable secondary columns.
+   - Ensure fixed headers never cover section titles and drawer footers never overlap scrollable chart/formula content.
+4. **First-Run Setup Checklist & Guided Onboarding:**
+   - Add a collapsible **First-Run Setup Checklist** banner on the Overview page (1. Business Settings → 2. Add Supplier/Customer → 3. Import/Add Products & Opening Stock → 4. First Purchase Order → 5. First Sale) that tracks real completion progress.
+
+---
+
+### PHASE 6: AUTOMATED E2E DEMO JOURNEY & VERIFICATION SUITE
+Create and run an automated verification test suite (`tests/e2e_complete_journey.test.js`) in an isolated demo business that verifies this exact sequence:
+1. Start with `0` stock on a test SKU and `$50,000.00` opening cash.
+2. Create a Draft PO for `100` units → verify `on_hand` remains `0` and Free Capital is not prematurely reduced by unapproved drafts; Approve PO → verify `incoming` becomes `100`.
+3. Receive `100` units → verify `on_hand` = `100`, `available` = `100`, `incoming` = `0`.
+4. Approve/Reserve a Sales Order for `10` units → verify `on_hand` remains `100`, `reserved` becomes `10`, `available` becomes `90`.
+5. Ship the `10` units → verify `on_hand` becomes `90`, `reserved` becomes `0`, `available` remains `90`.
+6. Issue invoice and record a partial payment → verify Accounts Receivable outstanding balance and Cash Available update accurately.
+7. Test supplier payment, customer return, order cancellation, and a blind stock count variance exceeding the approval limit (verifying `WAREHOUSE` cannot self-approve and `OWNER` approval updates the ledger).
+8. Test role permission bypasses, cross-business isolation, duplicate CSV import rejection, pack-size rounding, and persistence across server restart.
+
+---
+
+### FINAL DELIVERY FORMAT
+Execute Phases 0–6 in order. Run all Node and Python tests until 100% pass. Conclude your response with:
+1. **Audit Matrix** (Initial vs. Final status with file references)
+2. **Summary of Changed Files**
+3. **Automated Test Execution Output**
+4. **Beginner-Friendly Operational Guide** explaining how Settings, Purchasing, Inventory, Sales, Cash Flow, and ML Demand Planning connect in daily use.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-08T12:18:28+05:30.
+</ADDITIONAL_METADATA>

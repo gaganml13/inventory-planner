@@ -1,0 +1,27 @@
+{
+  "name": "inventory-planner",
+  "version": "2.0.0",
+  "description": "Smart Business Manager for Small Wholesale Operators — Inventory, Commercial Orders, Payments & Decision Intelligence",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node database/seed.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "keywords": [
+    "inventory",
+    "wholesale",
+    "order-management",
+    "stock-movements",
+    "forecasting",
+    "decision-intelligence",
+    "sqlite",
+    "express"
+  ],
+  "author": "Smart Business Manager Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

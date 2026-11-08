@@ -1,0 +1,1972 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-50 text-slate-900">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Business Analyzer — Smart Business Manager & Demand Planner</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              600: '#4f46e5',
+              700: '#4338ca',
+              dark: '#0f172a'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .nav-link.active {
+      background-color: #f1f5f9;
+      color: #0f172a;
+      font-weight: 600;
+    }
+    .modal-backdrop {
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(3px);
+    }
+    .drawer-backdrop {
+      background: rgba(15, 23, 42, 0.4);
+      backdrop-filter: blur(2px);
+    }
+    #appSidebar {
+      transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #appSidebar.collapsed {
+      width: 4.5rem !important;
+    }
+    #appSidebar.collapsed .sidebar-text {
+      display: none !important;
+    }
+    #appSidebar.collapsed .sidebar-header {
+      padding: 0.75rem 0.25rem !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 0.375rem !important;
+    }
+    #appSidebar.collapsed .sidebar-header-brand {
+      justify-content: center !important;
+      width: 100% !important;
+      gap: 0 !important;
+    }
+    #appSidebar.collapsed #sidebarToggleBtn {
+      margin-left: 0 !important;
+      padding: 0.25rem 0.5rem !important;
+      background: #f1f5f9;
+      border-radius: 0.375rem;
+    }
+    #appSidebar.collapsed #sidebarNav {
+      padding-left: 0.375rem !important;
+      padding-right: 0.375rem !important;
+    }
+    #appSidebar.collapsed .nav-link {
+      justify-content: center !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+      gap: 0 !important;
+    }
+    #appSidebar.collapsed .nav-link svg {
+      margin: 0 !important;
+    }
+    #appSidebar.collapsed .sidebar-footer {
+      padding: 0.75rem 0.25rem !important;
+    }
+    #appSidebar.collapsed .sidebar-user-card {
+      padding: 0.25rem !important;
+      justify-content: center !important;
+      border: none !important;
+      background: transparent !important;
+    }
+    #appSidebar.collapsed .sidebar-logout-btn {
+      display: none !important;
+    }
+  </style>
+</head>
+<body class="h-full flex overflow-hidden bg-slate-50 text-slate-800">
+
+  <!-- ==========================================
+       LEFT SIDEBAR NAVIGATION (Zoho / StockTrim Layout)
+  =========================================== -->
+  <aside id="appSidebar" class="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 select-none z-20 transition-all duration-200">
+    <!-- Top Brand & Mode Section -->
+    <div class="sidebar-header p-4 border-b border-slate-100 flex items-center justify-between">
+      <div class="sidebar-header-brand flex items-center gap-3 min-w-0">
+        <div class="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-sm shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+          </svg>
+        </div>
+        <div class="min-w-0 flex-1 sidebar-text">
+          <h1 class="text-sm font-bold text-slate-900 truncate" id="sidebarBizName">Smart Business Analyzer</h1>
+          <div class="flex items-center gap-1.5 mt-0.5">
+            <span id="tenantModeBadge" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+              Demo Guest
+            </span>
+          </div>
+        </div>
+      </div>
+      <button id="sidebarToggleBtn" onclick="App.toggleSidebar()" title="Toggle Sidebar (Collapse/Expand)" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition shrink-0 ml-1">
+        <span id="sidebarToggleIcon" class="text-xs font-bold leading-none">«</span>
+      </button>
+    </div>
+
+    <!-- Nav Links (6 Key Operational Modules) -->
+    <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto" id="sidebarNav">
+      <button data-tab="overview" class="nav-link active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors">
+        <svg class="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+        </svg>
+        <span class="sidebar-text truncate">Overview & Replenishment</span>
+      </button>
+
+      <button data-tab="inventory" class="nav-link w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors">
+        <svg class="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+        </svg>
+        <span class="sidebar-text truncate">Catalog & Inventory</span>
+      </button>
+
+      <button data-tab="purchases" class="nav-link w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors">
+        <svg class="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+        </svg>
+        <span class="sidebar-text truncate">Purchasing (PO)</span>
+      </button>
+
+      <button data-tab="sales" class="nav-link w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors">
+        <svg class="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        <span class="sidebar-text truncate">Sales Orders</span>
+      </button>
+
+      <button data-tab="payments" class="nav-link w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors">
+        <svg class="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span class="sidebar-text truncate">Payments & Cash Flow</span>
+      </button>
+
+      <button data-tab="insights" class="nav-link w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors">
+        <svg class="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
+        </svg>
+        <span class="sidebar-text truncate">Demand Planning</span>
+      </button>
+
+      <button data-tab="settings" class="nav-link w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors">
+        <svg class="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <span class="sidebar-text truncate">Settings & Team</span>
+      </button>
+
+      <div class="pt-3 border-t border-slate-100">
+        <button onclick="App.openContactsModal()" class="nav-link w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors" title="Suppliers & Customers">
+          <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+          </svg>
+          <span class="sidebar-text truncate">Suppliers & Customers</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Bottom User Profile & Logout -->
+    <div class="sidebar-footer p-3 border-t border-slate-200 bg-slate-50">
+      <div class="sidebar-user-card flex items-center justify-between gap-2 p-2 rounded-lg bg-white border border-slate-200">
+        <div onclick="App.openProfileModal()" class="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-80 transition" title="Manage your personal profile">
+          <div class="w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0" id="userAvatar">
+            G
+          </div>
+          <div class="min-w-0 sidebar-text">
+            <p class="text-xs font-semibold text-slate-900 truncate" id="userNameLabel">Guest Operator</p>
+            <p class="text-[10px] text-slate-500 truncate" id="userEmailLabel">guest@demo</p>
+          </div>
+        </div>
+        <button onclick="App.logout()" title="Sign Out" class="sidebar-logout-btn p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors shrink-0">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ==========================================
+       MAIN CONTENT WRAPPER
+  =========================================== -->
+  <div class="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+
+    <!-- Top Header Bar (Quick Action + Global Search + Capital Indicator) -->
+    <header class="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between gap-4 shrink-0 shadow-xs z-10">
+      <!-- Global SKU Search Bar -->
+      <div class="flex items-center gap-2 flex-1 max-w-md">
+        <div class="relative w-full">
+          <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+          </div>
+          <input type="text" id="globalSearchInput" placeholder="Search SKU, product name, or barcode… (/)"
+            class="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors" />
+        </div>
+      </div>
+
+      <!-- Right Header Group -->
+      <div class="flex items-center gap-3">
+        <!-- Working Capital Indicator Pill -->
+        <div class="hidden md:flex items-center gap-2 px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span class="text-slate-500 font-medium">Free Capital:</span>
+            <span class="font-bold text-slate-900" id="headerFreeCapital">$0.00</span>
+          </div>
+          <span class="text-slate-300">|</span>
+          <div class="text-[11px] text-slate-500">
+            <span>Reserve:</span> <span class="font-semibold text-slate-700" id="headerCashReserve">$0.00</span>
+          </div>
+        </div>
+
+        <!-- + Create Dropdown Menu -->
+        <div class="relative inline-block text-left" id="createDropdownWrapper">
+          <button onclick="App.toggleCreateMenu()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>Create</span>
+            <svg class="w-3.5 h-3.5 ml-0.5 text-indigo-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+          <!-- Dropdown Options -->
+          <div id="createDropdownMenu" class="hidden absolute right-0 mt-2 w-52 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 z-30 text-xs">
+            <button onclick="App.openOrderModal('PURCHASE'); App.toggleCreateMenu(false);" class="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span> New Purchase Order (PO)
+            </button>
+            <button onclick="App.openOrderModal('SALE'); App.toggleCreateMenu(false);" class="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> New Sales Order (SO)
+            </button>
+            <button onclick="App.openAdjustModal(); App.toggleCreateMenu(false);" class="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Adjust Stock Count
+            </button>
+            <button onclick="App.openPaymentModal(); App.toggleCreateMenu(false);" class="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Record Payment
+            </button>
+            <div class="border-t border-slate-100 my-1"></div>
+            <button onclick="App.openNewProductModal(); App.toggleCreateMenu(false);" class="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span> Add Catalog Product
+            </button>
+            <button onclick="App.openImportModal(); App.toggleCreateMenu(false);" class="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span> Import Catalog via CSV
+            </button>
+            <button onclick="App.openContactsModal(); App.toggleCreateMenu(false);" class="w-full text-left px-4 py-2 text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span> Manage Suppliers & Customers
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace Scroll Area -->
+    <main class="flex-1 overflow-y-auto p-6 space-y-6">
+
+      <!-- ==========================================
+           VIEW 1: OVERVIEW & REPLENISHMENT DASHBOARD (StockTrim Style)
+      =========================================== -->
+      <div id="view-overview" class="view-panel space-y-6">
+
+        <!-- Guided Onboarding Checklist Banner (Collapsible with real completion progress) -->
+        <div id="onboardingBanner" class="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white rounded-xl p-5 shadow-xs border border-indigo-800">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h3 class="text-sm font-bold tracking-tight">First-Run Guided Setup Checklist</h3>
+                  <span id="onboardingProgressBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                    0 of 5 Completed (0%)
+                  </span>
+                </div>
+                <p class="text-xs text-slate-300 mt-0.5">Complete these core steps to initialize inventory, financial boundaries, and demand planning.</p>
+              </div>
+            </div>
+            <button onclick="App.toggleOnboardingBanner()" class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded bg-white/5 hover:bg-white/10 transition" id="onboardingToggleText">
+              Collapse ▲
+            </button>
+          </div>
+
+          <div id="onboardingStepsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mt-4">
+            <!-- Step 1: Settings -->
+            <button onclick="App.switchTab('settings')" class="flex flex-col justify-between p-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-left transition group">
+              <div class="flex items-center justify-between mb-2">
+                <span class="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-xs" id="step1Icon">1</span>
+                <span class="text-[10px] text-slate-300 font-medium" id="step1Status">Pending</span>
+              </div>
+              <div>
+                <p class="text-xs font-semibold text-white group-hover:text-indigo-200">1. Business Settings</p>
+                <p class="text-[10px] text-slate-300 mt-0.5">Cash, currency & lead times</p>
+              </div>
+            </button>
+
+            <!-- Step 2: Contacts -->
+            <button onclick="App.openContactsModal()" class="flex flex-col justify-between p-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-left transition group">
+              <div class="flex items-center justify-between mb-2">
+                <span class="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center font-bold text-xs" id="step2Icon">2</span>
+                <span class="text-[10px] text-slate-300 font-medium" id="step2Status">Pending</span>
+              </div>
+              <div>
+                <p class="text-xs font-semibold text-white group-hover:text-blue-200">2. Add Contacts</p>
+                <p class="text-[10px] text-slate-300 mt-0.5">Suppliers & customers</p>
+              </div>
+            </button>
+
+            <!-- Step 3: Products -->
+            <button onclick="App.openNewProductModal()" class="flex flex-col justify-between p-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-left transition group">
+              <div class="flex items-center justify-between mb-2">
+                <span class="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center font-bold text-xs" id="step3Icon">3</span>
+                <span class="text-[10px] text-slate-300 font-medium" id="step3Status">Pending</span>
+              </div>
+              <div>
+                <p class="text-xs font-semibold text-white group-hover:text-emerald-200">3. Products & Stock</p>
+                <p class="text-[10px] text-slate-300 mt-0.5">SKUs & initial balances</p>
+              </div>
+            </button>
+
+            <!-- Step 4: Purchase Order -->
+            <button onclick="App.openOrderModal('PURCHASE')" class="flex flex-col justify-between p-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-left transition group">
+              <div class="flex items-center justify-between mb-2">
+                <span class="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center font-bold text-xs" id="step4Icon">4</span>
+                <span class="text-[10px] text-slate-300 font-medium" id="step4Status">Pending</span>
+              </div>
+              <div>
+                <p class="text-xs font-semibold text-white group-hover:text-amber-200">4. First Purchase</p>
+                <p class="text-[10px] text-slate-300 mt-0.5">Procure replenishment stock</p>
+              </div>
+            </button>
+
+            <!-- Step 5: Sales Order -->
+            <button onclick="App.openOrderModal('SALE')" class="flex flex-col justify-between p-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-left transition group">
+              <div class="flex items-center justify-between mb-2">
+                <span class="w-6 h-6 rounded-full bg-purple-500 flex items-center justify-center font-bold text-xs" id="step5Icon">5</span>
+                <span class="text-[10px] text-slate-300 font-medium" id="step5Status">Pending</span>
+              </div>
+              <div>
+                <p class="text-xs font-semibold text-white group-hover:text-purple-200">5. First Sale</p>
+                <p class="text-[10px] text-slate-300 mt-0.5">Reserve & fulfill orders</p>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- 1. Capital & Health Strip (4 Executive Indicators) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- Metric 1: Purchasing Budget -->
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+            <div class="flex items-center justify-between text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5">
+              <span>Purchasing Budget</span>
+              <span class="text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-[10px] font-bold">Safe to Spend</span>
+            </div>
+            <p id="kpiPurchasingBudget" class="text-2xl font-bold text-slate-900">$0.00</p>
+            <p class="text-[11px] text-slate-500 mt-1" id="kpiPurchasingBudgetSub">Cash after reserve & vendor commitments</p>
+          </div>
+
+          <!-- Metric 2: 14-Day Upcoming Obligations -->
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+            <div class="flex items-center justify-between text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5">
+              <span>Upcoming Obligations</span>
+              <span class="text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[10px] font-bold">14-Day AP</span>
+            </div>
+            <p id="kpiUpcomingDebt" class="text-2xl font-bold text-slate-900">$0.00</p>
+            <p class="text-[11px] text-slate-500 mt-1" id="kpiUpcomingDebtSub">Payable to suppliers within 14 days</p>
+          </div>
+
+          <!-- Metric 3: Cash Reserve Buffer -->
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+            <div class="flex items-center justify-between text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5">
+              <span>Cash Reserve Buffer</span>
+              <span class="text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[10px] font-bold">Untouchable</span>
+            </div>
+            <p id="kpiCashReserve" class="text-2xl font-bold text-slate-900">$0.00</p>
+            <p class="text-[11px] text-slate-500 mt-1">Mandatory liquidity policy ceiling</p>
+          </div>
+
+          <!-- Metric 4: SKUs at Stockout Risk -->
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+            <div class="flex items-center justify-between text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5">
+              <span>Stockout Risk</span>
+              <span id="kpiStockoutRiskBadge" class="text-rose-700 bg-rose-50 px-2 py-0.5 rounded text-[10px] font-bold">Optimal</span>
+            </div>
+            <p id="kpiStockoutRiskCount" class="text-2xl font-bold text-slate-900">0 SKUs</p>
+            <p class="text-[11px] text-rose-600 font-medium mt-1">Cover &lt; vendor delivery lead time</p>
+          </div>
+        </div>
+
+        <!-- 2. Action-Oriented: Today's Prioritized Actions List -->
+        <section id="todaysActionsSection" class="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+          <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse"></span>
+              <h3 class="text-sm font-bold text-slate-900">Today's Priority Actions</h3>
+              <span id="todaysActionsCountBadge" class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-indigo-50 text-indigo-700">0 Tasks</span>
+            </div>
+            <span class="text-[11px] text-slate-400">Prioritized operational decisions requiring attention</span>
+          </div>
+          <div id="todaysActionsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <!-- Populated via JS -->
+            <div class="p-3.5 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
+              Loading operational checklist…
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. Overview Bar Chart: Top 5 Urgent Reorder Priorities -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">Top 5 Urgent Reorder Priorities</h3>
+              <p class="text-xs text-slate-500">Current available on-hand stock compared against reorder point threshold</p>
+            </div>
+            <span class="text-[11px] font-medium text-slate-400">Click bar to inspect SKU</span>
+          </div>
+          <div class="h-44 w-full">
+            <canvas id="urgentReorderChart"></canvas>
+          </div>
+        </section>
+
+        <!-- StockTrim-Style Replenishment Recommendations Table -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+          <div class="px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-bold text-slate-900">Replenishment Recommendations</h2>
+                <span id="recsCountBadge" class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 text-slate-700">0 SKUs</span>
+              </div>
+              <p class="text-xs text-slate-500 mt-0.5">Constrained by working capital reserve & ranked by margin velocity (Margin &times; Velocity)</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="App.recomputeIntelligence()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition shadow-2xs">
+                <svg class="w-3.5 h-3.5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                <span>Run Forecast Pipeline</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                  <th class="py-3 px-4 w-12 text-center">Rank</th>
+                  <th class="py-3 px-4">SKU & Description</th>
+                  <th class="py-3 px-4 w-44">Stock Status (Cover)</th>
+                  <th class="py-3 px-4">On Hand / Incoming</th>
+                  <th class="py-3 px-4 text-right">Daily Velocity</th>
+                  <th class="py-3 px-4 text-right">Recommended Reorder</th>
+                  <th class="py-3 px-4 text-right">Est. Cost</th>
+                  <th class="py-3 px-4 text-center">Urgency</th>
+                  <th class="py-3 px-4 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="recommendationsTableBody" class="divide-y divide-slate-100">
+                <tr>
+                  <td colspan="9" class="py-12 text-center text-slate-400">Loading demand forecast recommendations…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- ==========================================
+           VIEW 2: CATALOG & INVENTORY (Full CRUD)
+      =========================================== -->
+      <div id="view-inventory" class="view-panel hidden space-y-6">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Inventory Positions & Ledgers</h2>
+            <p class="text-xs text-slate-500">Physical on-hand balances, reserved allocations, and incoming stock.</p>
+          </div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="App.openCycleCountModal()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-xs font-semibold text-indigo-700 shadow-2xs">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+              Start Audit
+            </button>
+            <button onclick="App.openAdjustModal()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs">
+              Adjust Stock Count
+            </button>
+            <button onclick="App.exportCsv('catalog')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs">
+              <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Export CSV
+            </button>
+            <button onclick="App.openContactsModal()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs">
+              Manage Contacts
+            </button>
+            <button onclick="App.openNewProductModal()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white shadow-2xs">
+              + New Product
+            </button>
+          </div>
+        </div>
+
+        <!-- Inventory Filter Tabs -->
+        <div class="flex items-center gap-2 border-b border-slate-200 pb-2">
+          <button onclick="App.filterCatalog('all')" id="catFilter-all" class="px-3 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white shadow-2xs">All Items</button>
+          <button onclick="App.filterCatalog('active')" id="catFilter-active" class="px-3 py-1 rounded-md text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Active Stock</button>
+          <button onclick="App.filterCatalog('low')" id="catFilter-low" class="px-3 py-1 rounded-md text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Low Stock Alert</button>
+          <button onclick="App.filterCatalog('slow')" id="catFilter-slow" class="px-3 py-1 rounded-md text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Slow-Moving (>60d)</button>
+          <button onclick="App.filterCatalog('archived')" id="catFilter-archived" class="px-3 py-1 rounded-md text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Archived</button>
+        </div>
+
+        <section class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                  <th class="py-3 px-4 sticky left-0 bg-slate-50 z-10">SKU / Barcode</th>
+                  <th class="py-3 px-4">Product Name</th>
+                  <th class="py-3 px-4">Category</th>
+                  <th class="py-3 px-4 text-right">Cost ($)</th>
+                  <th class="py-3 px-4 text-right">Price ($)</th>
+                  <th class="py-3 px-4 text-right">On Hand</th>
+                  <th class="py-3 px-4 text-right">Available</th>
+                  <th class="py-3 px-4 text-right">Incoming PO</th>
+                  <th class="py-3 px-4 text-center">Status</th>
+                  <th class="py-3 px-4 text-right sticky right-0 bg-slate-50 z-10">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="inventoryTableBody" class="divide-y divide-slate-100">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Movement Audit Ledger -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+          <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">Stock Movements Ledger (Audit Trail)</h3>
+              <p class="text-xs text-slate-500">Atomic inventory changes logged with reason codes and running balance verification.</p>
+            </div>
+            <button onclick="App.exportCsv('movements')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs">
+              <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Export Ledger
+            </button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                  <th class="py-3 px-4">Timestamp</th>
+                  <th class="py-3 px-4">SKU & Item</th>
+                  <th class="py-3 px-4">Location</th>
+                  <th class="py-3 px-4 text-center">Change</th>
+                  <th class="py-3 px-4 text-right">Balance After</th>
+                  <th class="py-3 px-4">Reason / Notes</th>
+                  <th class="py-3 px-4">Source</th>
+                </tr>
+              </thead>
+              <tbody id="movementsTableBody" class="divide-y divide-slate-100">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ==========================================
+           VIEW 3: PURCHASING (PO)
+      =========================================== -->
+      <div id="view-purchases" class="view-panel hidden space-y-6">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Purchase Orders (Inbound Restock)</h2>
+            <p class="text-xs text-slate-500">Vendor procurement orders that increment incoming stock and track payables.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="App.exportCsv('orders')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs">
+              <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Export CSV
+            </button>
+            <button onclick="App.openOrderModal('PURCHASE')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white shadow-2xs">
+              + New Purchase Order
+            </button>
+          </div>
+        </div>
+
+        <section class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                  <th class="py-3 px-4">PO Number</th>
+                  <th class="py-3 px-4">Supplier</th>
+                  <th class="py-3 px-4">Created Date</th>
+                  <th class="py-3 px-4">Due Date</th>
+                  <th class="py-3 px-4 text-right">Total ($)</th>
+                  <th class="py-3 px-4 text-right">Paid ($)</th>
+                  <th class="py-3 px-4 text-center">Status</th>
+                  <th class="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="purchaseOrdersTableBody" class="divide-y divide-slate-100">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ==========================================
+           VIEW 4: SALES ORDERS
+      =========================================== -->
+      <div id="view-sales" class="view-panel hidden space-y-6">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Sales Orders (Customer Demand)</h2>
+            <p class="text-xs text-slate-500">Commercial sale contracts that allocate reserved stock and track receivables.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="App.exportCsv('orders')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs">
+              <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              Export CSV
+            </button>
+            <button onclick="App.openOrderModal('SALE')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white shadow-2xs">
+              + New Sales Order
+            </button>
+          </div>
+        </div>
+
+        <section class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                  <th class="py-3 px-4">Order Number</th>
+                  <th class="py-3 px-4">Customer</th>
+                  <th class="py-3 px-4">Created Date</th>
+                  <th class="py-3 px-4">Due Date</th>
+                  <th class="py-3 px-4 text-right">Total ($)</th>
+                  <th class="py-3 px-4 text-right">Paid ($)</th>
+                  <th class="py-3 px-4 text-center">Status</th>
+                  <th class="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="salesOrdersTableBody" class="divide-y divide-slate-100">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ==========================================
+           VIEW 5: PAYMENTS & CASH FLOW
+      =========================================== -->
+      <div id="view-payments" class="view-panel hidden space-y-6">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Payments & Working Capital Ledger</h2>
+            <p class="text-xs text-slate-500">Accounts receivable collections, supplier disbursements, and anti-over-allocation checks.</p>
+          </div>
+          <button onclick="App.openPaymentModal()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white shadow-2xs">
+            Record Payment Allocation
+          </button>
+        </div>
+
+        <!-- AR / AP Detailed Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Accounts Receivable (Customers)</span>
+              <span class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[10px] font-bold">Unpaid Invoices</span>
+            </div>
+            <div class="flex items-baseline justify-between">
+              <span class="text-2xl font-bold text-slate-900" id="payArTotal">$0.00</span>
+              <span class="text-xs text-rose-600 font-semibold" id="payArOverdue">Overdue: $0.00</span>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500 flex justify-between">
+              <span id="payArOpenCount">0 open invoices</span>
+              <span id="payArOverdueCount">0 overdue invoices</span>
+            </div>
+          </div>
+
+          <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Accounts Payable (Suppliers)</span>
+              <span class="text-amber-700 bg-amber-50 px-2 py-0.5 rounded text-[10px] font-bold">Vendor Debt</span>
+            </div>
+            <div class="flex items-baseline justify-between">
+              <span class="text-2xl font-bold text-slate-900" id="payApTotal">$0.00</span>
+              <span class="text-xs text-slate-600 font-semibold" id="payApOverdue">Overdue: $0.00</span>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-500 flex justify-between">
+              <span id="payApOpenCount">0 open bills</span>
+              <span id="payAp14d">Upcoming 14d: $0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <section class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+          <div class="px-6 py-4 border-b border-slate-200">
+            <h3 class="text-sm font-bold text-slate-900">Payment Allocations History</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                  <th class="py-3 px-4">Date</th>
+                  <th class="py-3 px-4">Order Ref</th>
+                  <th class="py-3 px-4">Contact</th>
+                  <th class="py-3 px-4 text-center">Type</th>
+                  <th class="py-3 px-4 text-right">Amount ($)</th>
+                  <th class="py-3 px-4">Method</th>
+                  <th class="py-3 px-4">Notes</th>
+                </tr>
+              </thead>
+              <tbody id="paymentAllocationsTableBody" class="divide-y divide-slate-100">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ==========================================
+           VIEW 6: DEMAND PLANNING & INTELLIGENCE
+      =========================================== -->
+      <div id="view-insights" class="view-panel hidden space-y-6">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Demand Planning & Intelligence</h2>
+            <p class="text-xs text-slate-500">Continuous demand pattern classification (Croston/SBA, Intermittent, Smooth), rolling-origin backtesting, and P50/P90 quantile projections.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="App.seedBenchmarkData()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-xs font-semibold text-indigo-700 shadow-2xs transition">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+              </svg>
+              Seed Benchmark Test Data
+            </button>
+            <button onclick="App.recomputeIntelligence()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white shadow-2xs transition">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              Run Pipeline
+            </button>
+          </div>
+        </div>
+
+        <!-- Expandable Technical Model Details & Diagnostics Accordion -->
+        <details class="bg-white rounded-xl border border-slate-200 p-5 shadow-xs group">
+          <summary class="flex items-center justify-between cursor-pointer select-none">
+            <div class="flex items-center gap-2.5">
+              <div class="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-xs font-bold text-slate-900">Technical Model Details & Validation Diagnostics</h3>
+                <p class="text-[11px] text-slate-500">Supervised rolling-origin backtesting against 7-day Simple Moving Average baseline.</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div id="diagStatusPill" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span id="diagStatus">Synchronized to SQLite</span>
+              </div>
+              <svg class="w-4 h-4 text-slate-400 transform group-open:-rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </div>
+          </summary>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs mt-4 pt-4 border-t border-slate-100">
+            <!-- Metric 1: Algorithm -->
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+              <div class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Active Algorithms</div>
+              <div class="mt-2">
+                <div class="text-xs font-bold text-slate-900 font-mono" id="diagAlgorithm">LightGBM / Croston SBA</div>
+                <div class="text-[10px] text-slate-500 mt-0.5">Dual Supervised & Intermittent Regressor</div>
+              </div>
+            </div>
+
+            <!-- Metric 2: Training Volume -->
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+              <div class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Training Volume</div>
+              <div class="mt-2">
+                <div class="text-xs font-bold text-slate-900" id="diagTrainingVolume">1,440 daily records</div>
+                <div class="text-[10px] text-slate-500 mt-0.5" id="diagSplit">80% train / 20% test split</div>
+              </div>
+            </div>
+
+            <!-- Metric 3: Test Performance -->
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+              <div class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Validation Error (MAE)</div>
+              <div class="mt-2">
+                <div class="text-xs font-bold text-indigo-700" id="diagTestPerformance">ML: 1.8 pcs vs Base: 4.6 pcs</div>
+                <div class="mt-1">
+                  <span id="diagImprovementBadge" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                    60.8% error reduction
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Metric 4: Persistence Status -->
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+              <div class="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Persistence Status</div>
+              <div class="mt-2">
+                <div class="text-xs font-bold text-slate-900" id="diagPersistenceText">Synchronized to SQLite</div>
+                <div class="text-[10px] text-slate-400 mt-0.5 font-mono" id="diagLastUpdated">Active</div>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Forecast SKU List Explorer -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+          <div class="px-6 py-4 border-b border-slate-200">
+            <h3 class="text-sm font-bold text-slate-900">Catalog SKU Forecasts (14-Day Horizon)</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
+                  <th class="py-3 px-4">SKU & Item</th>
+                  <th class="py-3 px-4">Active Model</th>
+                  <th class="py-3 px-4 text-right">Expected Demand (P50)</th>
+                  <th class="py-3 px-4 text-right">Peak Demand (P90)</th>
+                  <th class="py-3 px-4 text-center">Uncertainty</th>
+                  <th class="py-3 px-4 text-right">Min Safety Stock</th>
+                  <th class="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="forecastsTableBody" class="divide-y divide-slate-100">
+                <!-- Populated via JS with real numeric values -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- ==========================================
+           VIEW 7: SETTINGS & GOVERNANCE
+      =========================================== -->
+      <div id="view-settings" class="view-panel hidden space-y-6">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Settings & Operational Governance</h2>
+            <p class="text-xs text-slate-500">Configure financial boundaries, purchasing budgets, approval thresholds, and manage role-based team access.</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Left 2 Cols: Financial Boundaries & Operations -->
+          <div class="lg:col-span-2 space-y-6">
+            <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-6">
+              <h3 class="text-sm font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center justify-between">
+                <span>Financial Parameters & Purchasing Budget Policy</span>
+                <span class="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">Procurement Controls</span>
+              </h3>
+              <form id="businessSettingsForm" onsubmit="App.saveBusinessSettings(event)" class="space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Business Name (business_name) *</label>
+                    <input id="setBizName" required placeholder="Vanguard Wholesale Distribution" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+                    <p class="text-[10px] text-slate-400 mt-0.5">Your organization's official trading entity name.</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Operating Currency (currency) *</label>
+                    <select id="setBizCurrency" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white">
+                      <option value="USD">USD ($) - US Dollar</option>
+                      <option value="EUR">EUR (€) - Euro</option>
+                      <option value="GBP">GBP (£) - British Pound</option>
+                      <option value="CAD">CAD ($) - Canadian Dollar</option>
+                      <option value="AUD">AUD ($) - Australian Dollar</option>
+                    </select>
+                    <p class="text-[10px] text-amber-600 mt-0.5">Currency changes relabel ledger amounts without FX conversion.</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Timezone (timezone) *</label>
+                    <input id="setTimezone" required placeholder="UTC" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+                    <p class="text-[10px] text-slate-400 mt-0.5">Operating timezone for lead time & due dates (e.g., UTC).</p>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Cash Available ($) *</label>
+                    <input id="setOperatingCash" type="number" step="0.01" min="0" required placeholder="150000.00" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+                    <p class="text-[10px] text-slate-400 mt-0.5">Liquid cash available in verified bank accounts (e.g. $150,000.00).</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Minimum Cash Reserve ($) *</label>
+                    <input id="setCashReserve" type="number" step="0.01" min="0" required placeholder="50000.00" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+                    <p class="text-[10px] text-slate-400 mt-0.5">Untouchable capital floor protected from purchasing budgets (e.g. $50,000.00).</p>
+                  </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t border-slate-100">
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Adjustment Approval Limit ($) *</label>
+                    <input id="setApprovalThreshold" type="number" step="1" min="0" required placeholder="500" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+                    <p class="text-[10px] text-slate-400 mt-0.5">Cycle count discrepancy value requiring OWNER review (e.g. $500.00).</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Supplier Delivery Time (Days) *</label>
+                    <input id="setDefaultLeadDays" type="number" min="1" max="180" required placeholder="7" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+                    <p class="text-[10px] text-slate-400 mt-0.5">Average turnaround from PO approval to arrival (e.g. 7 days).</p>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1">Payment Terms (Days) *</label>
+                    <input id="setDefaultTermsDays" type="number" min="0" max="180" required placeholder="30" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+                    <p class="text-[10px] text-slate-400 mt-0.5">Standard net payment term for customer/vendor invoices (e.g. 30 days).</p>
+                  </div>
+                </div>
+
+                <div class="flex justify-end pt-3">
+                  <button type="submit" class="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition shadow-xs">
+                    Save Governance Settings
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Right Col: Team Members & Roles (RBAC) -->
+          <div class="space-y-6">
+            <div class="bg-white rounded-xl border border-slate-200 shadow-xs p-6">
+              <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-100">
+                <h3 class="text-sm font-bold text-slate-900">Team & Role Access</h3>
+                <button onclick="App.openAddTeamModal()" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">+ Add User</button>
+              </div>
+              <p class="text-[11px] text-slate-500 mb-3">Roles: <strong class="text-slate-800">OWNER</strong> (full authority), <strong class="text-slate-800">PURCHASING</strong> (orders & bills), <strong class="text-slate-800">WAREHOUSE</strong> (receiving, counts, dispatch).</p>
+
+              <div id="teamUsersContainer" class="space-y-2">
+                <div class="p-3 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-400 text-center">
+                  Loading team members…
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ==========================================
+       SLIDING RIGHT-HAND DRAWER (Chart.js Interactive ML Forecast)
+  =========================================== -->
+  <div id="drawerOverlay" class="fixed inset-0 drawer-backdrop z-40 hidden transition-opacity duration-300 opacity-0" onclick="App.closeDrawer()"></div>
+  <div id="recommendationDrawer" class="fixed inset-y-0 right-0 max-w-xl w-full bg-white shadow-2xl border-l border-slate-200 z-50 transform transition-transform duration-300 ease-in-out translate-x-full flex flex-col justify-between">
+    <!-- Drawer Header -->
+    <div class="p-6 border-b border-slate-200 flex items-start justify-between bg-slate-50">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200" id="drawerSkuBadge">SKU-001</span>
+          <span class="text-xs text-slate-500 font-medium" id="drawerCategory">Electronics</span>
+          <!-- Health Pill: 🔴 Critical (<7d) | 🟡 Warning (7-14d) | 🟢 Healthy (>14d) -->
+          <span id="drawerHealthPill" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold">
+            🟢 Healthy
+          </span>
+        </div>
+        <h3 class="text-base font-bold text-slate-900 mt-1" id="drawerTitle">Product Name</h3>
+      </div>
+      <button onclick="App.closeDrawer()" class="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Drawer Body with guaranteed clearance for sticky footer -->
+    <div class="flex-1 overflow-y-auto p-6 pb-36 space-y-5 text-xs">
+      <!-- 1. What to Buy / Target Reorder -->
+      <div class="p-4 rounded-xl bg-indigo-50/60 border border-indigo-100 flex items-center justify-between">
+        <div>
+          <span class="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Recommended Order (What to Buy)</span>
+          <p class="text-base font-bold text-slate-900 mt-0.5" id="drawerTargetReorder">0 packs (0 units)</p>
+          <p class="text-[11px] text-slate-600 mt-0.5" id="drawerTargetReorderSub">Wholesale pack size snapped</p>
+        </div>
+        <div class="text-right">
+          <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Estimated PO Value</span>
+          <p class="text-base font-bold text-indigo-700 mt-0.5" id="drawerTargetCost">$0.00</p>
+          <p class="text-[11px] text-slate-500 mt-0.5" id="drawerUnitCostLabel">at $0.00 / unit</p>
+        </div>
+      </div>
+
+      <!-- 2. Why: Operational Driver & Trajectory -->
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <h4 class="font-bold text-slate-900 text-xs">Why This Recommendation (Operational Driver)</h4>
+          <span class="text-[10px] text-slate-500 font-medium" id="drawerDriverSummary">Lead time demand buffer</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+            <p class="text-[10px] uppercase font-bold text-slate-400">Demand Velocity</p>
+            <p class="text-xs font-bold text-slate-900 mt-0.5" id="cardSalesVelocity">0.0 units / day</p>
+            <p class="text-[10px] text-slate-500 mt-0.5" id="cardSalesVelocitySub">Daily smoothed consumption</p>
+          </div>
+          <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+            <p class="text-[10px] uppercase font-bold text-slate-400">Supplier Lead Time</p>
+            <p class="text-xs font-bold text-slate-900 mt-0.5" id="cardLeadTime">7 days</p>
+            <p class="text-[10px] text-slate-500 mt-0.5" id="cardSafetyBuffer">Buffer: 0 units</p>
+          </div>
+          <div class="p-3 rounded-lg bg-slate-50 border border-slate-200">
+            <p class="text-[10px] uppercase font-bold text-slate-400">Cover & Health</p>
+            <p class="text-xs font-bold text-slate-900 mt-0.5" id="cardOrderNeeded">0 days cover</p>
+            <p class="text-[10px] text-slate-500 mt-0.5" id="cardStockPositionSub">Stockout risk evaluated</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Demand Chart (Chart.js: 30-Day Past + Today + 14-Day Forecast) -->
+      <div class="p-4 rounded-xl bg-white border border-slate-200 shadow-xs">
+        <div class="flex items-center justify-between mb-2">
+          <span class="font-bold text-slate-800">Demand Trajectory & Forecast Scenario</span>
+          <span class="text-[10px] text-slate-500" id="drawerModelName">Model: Autoregressive Ridge</span>
+        </div>
+        <div class="h-44 w-full relative">
+          <canvas id="drawerForecastChart"></canvas>
+        </div>
+        <div class="flex items-center justify-between text-[10px] text-slate-500 mt-2 border-t border-slate-100 pt-2">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-0.5 bg-indigo-600 inline-block"></span> Past 30d Sales
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-0.5 bg-emerald-500 inline-block border-b border-dashed"></span> P50 Expected
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 bg-emerald-100 border border-emerald-400 inline-block rounded-xs"></span> P90 Scenario
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Supporting Records & Verification -->
+      <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5 text-slate-600 text-[11px]">
+        <h4 class="font-bold text-slate-900 text-xs mb-2">Supporting Inventory & Pipeline Records</h4>
+        <div class="flex justify-between py-1 border-b border-slate-200">
+          <span>Lead Time Demand (<span id="drawerLeadDays">7</span> days):</span>
+          <span class="font-semibold text-slate-900" id="drawerLeadDemand">0 units</span>
+        </div>
+        <div class="flex justify-between py-1 border-b border-slate-200">
+          <span>Safety Stock Floor (95% SL):</span>
+          <span class="font-semibold text-slate-900" id="drawerSafetyStock">0 units</span>
+        </div>
+        <div class="flex justify-between py-1 border-b border-slate-200">
+          <span>Available Physical Stock:</span>
+          <span class="font-semibold" id="drawerAvailable">0 units</span>
+        </div>
+        <div class="flex justify-between py-1 border-b border-slate-200">
+          <span>In-Flight Orders (Open PO Commitments):</span>
+          <span class="font-semibold text-blue-600" id="drawerIncoming">0 units</span>
+        </div>
+        <div class="flex justify-between py-1 border-b border-slate-200 font-bold text-slate-900">
+          <span>Net Requirement:</span>
+          <span id="drawerNetRequirement">0 units</span>
+        </div>
+        <div class="flex justify-between py-1 text-indigo-700 font-bold">
+          <span>Supplier Pack Snapped:</span>
+          <span id="drawerPackSnapped">0 packs (0 units)</span>
+        </div>
+      </div>
+
+      <!-- 4. Uncertainty & Demand Pattern Classification -->
+      <div class="p-4 rounded-xl bg-white border border-slate-200 space-y-2">
+        <h4 class="font-bold text-slate-900 text-xs">Demand Uncertainty & Pattern Profile</h4>
+        <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-600">
+          <div>Pattern: <span class="font-semibold text-slate-900" id="drawerDemandPattern">Smooth</span></div>
+          <div>Confidence: <span class="font-semibold text-slate-900" id="drawerConfidence">High (85%)</span></div>
+          <div>Expected 14d (P50): <span class="font-semibold text-slate-900" id="drawerP50Qty">0 units</span></div>
+          <div>Peak 14d (P90): <span class="font-semibold text-slate-900" id="drawerP90Qty">0 units</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Drawer Footer Actions -->
+    <div class="p-4 border-t border-slate-200 bg-white flex items-center justify-between gap-3">
+      <div>
+        <p class="text-[10px] text-slate-400 uppercase font-semibold">Total PO Commitment</p>
+        <p class="text-base font-bold text-slate-900" id="drawerCommitmentPrice">$0.00</p>
+      </div>
+      <button id="drawerDraftPoBtn" onclick="App.generatePoFromDrawer()" class="px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition shadow-sm flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span>Generate Draft PO</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       MODALS
+  =========================================== -->
+
+  <!-- Modal 1: Commercial Order (Sale / Purchase) -->
+  <div id="orderModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'orderModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <h3 id="orderModalTitle" class="text-sm font-bold tracking-tight">Create Commercial Order</h3>
+        <button onclick="App.closeModal('orderModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <form id="orderForm" onsubmit="App.submitOrder(event)" class="p-6 space-y-4">
+        <input type="hidden" name="type" id="orderFormType" value="SALE" />
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1" id="orderContactLabel">Customer *</label>
+            <select name="contact_id" id="orderContactSelect" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white">
+              <option value="">Select party…</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Due Date *</label>
+            <input name="due_date" type="date" required id="orderDueDate" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white" />
+          </div>
+          <div class="flex items-center pt-5">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" name="allow_backorder" id="orderBackorderCheck" class="rounded text-indigo-600" />
+              <span class="text-xs font-semibold text-slate-700">Allow Backorder</span>
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Notes</label>
+          <input name="notes" type="text" placeholder="Optional reference notes…" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+
+        <!-- Line Items Grid -->
+        <div class="border border-slate-200 rounded-lg overflow-hidden">
+          <div class="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+            <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Line Items</span>
+            <button type="button" onclick="App.addOrderLine()" class="text-xs font-semibold text-indigo-600 hover:underline">+ Add Line</button>
+          </div>
+          <div id="orderLinesContainer" class="p-3 space-y-2 max-h-48 overflow-y-auto">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+        <!-- Running Total -->
+        <div class="flex justify-between items-center pt-2 border-t border-slate-100">
+          <span class="text-xs font-medium text-slate-500">Order Net Total:</span>
+          <span id="orderRunningTotal" class="text-lg font-bold text-slate-900">$0.00</span>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="App.closeModal('orderModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Create Order</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 2: Stock Adjustment (Custom counts & explicit audit reasons) -->
+  <div id="adjustModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'adjustModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <h3 class="text-sm font-bold tracking-tight">Adjust Physical Stock Count</h3>
+        <button onclick="App.closeModal('adjustModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <form id="adjustForm" onsubmit="App.submitStockAdjust(event)" class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Product *</label>
+          <select name="product_id" id="adjustProductSelect" onchange="App.handleAdjustProductChange()" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white">
+            <option value="">Select product…</option>
+          </select>
+          <p id="adjustCurrentStockLabel" class="text-[11px] text-slate-500 mt-1 font-medium"></p>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Location *</label>
+          <select name="location_id" id="adjustLocationSelect" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white">
+            <option value="">Select location…</option>
+          </select>
+        </div>
+
+        <!-- Adjustment Mode Selector -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Adjustment Method</label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 p-2 border border-slate-200 rounded-lg cursor-pointer bg-slate-50">
+              <input type="radio" name="adjust_mode" value="delta" checked onchange="App.toggleAdjustMode('delta')" class="text-indigo-600">
+              <span class="text-xs font-medium text-slate-700">Add / Deduct (+/-)</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 border border-slate-200 rounded-lg cursor-pointer bg-slate-50">
+              <input type="radio" name="adjust_mode" value="target" onchange="App.toggleAdjustMode('target')" class="text-indigo-600">
+              <span class="text-xs font-medium text-slate-700">Set Actual Count</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="adjustDeltaGroup">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Quantity Change (+ Receive, - Dispatch) *</label>
+          <input name="change_qty" id="adjustChangeQty" type="number" placeholder="e.g. 10 or -5" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+
+        <div id="adjustTargetGroup" class="hidden">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Target Physical On-Hand Count *</label>
+          <input name="new_on_hand" id="adjustNewOnHand" type="number" min="0" placeholder="e.g. 50" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Audit Reason Code *</label>
+          <select name="reason" id="adjustReasonSelect" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white">
+            <option value="Physical Recount">Physical Recount (Cycle count / inventory audit)</option>
+            <option value="Damaged">Damaged (Defect scrap / write-off)</option>
+            <option value="Supplier Delivery">Supplier Delivery (Restock receipt)</option>
+            <option value="Sample Dispatch">Sample Dispatch (Customer sample promotion)</option>
+            <option value="Internal Use">Internal Use (Assembly / Demo testing)</option>
+          </select>
+        </div>
+
+        <div class="flex items-center">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" name="allow_backorder" class="rounded text-indigo-600" />
+            <span class="text-xs font-semibold text-slate-700">Authorize negative balance (Backorder)</span>
+          </label>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="App.closeModal('adjustModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Apply Adjustment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 3: Payment Allocation -->
+  <div id="paymentModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'paymentModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <h3 class="text-sm font-bold tracking-tight">Record Payment Allocation</h3>
+        <button onclick="App.closeModal('paymentModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <form id="paymentForm" onsubmit="App.submitPayment(event)" class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Target Order *</label>
+          <select name="order_id" id="paymentOrderSelect" onchange="App.handlePaymentOrderChange()" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white">
+            <option value="">Select order with unpaid balance…</option>
+          </select>
+          <p id="paymentOrderBalanceNotice" class="text-[11px] text-slate-500 mt-1 font-medium"></p>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Amount ($) *</label>
+          <input name="amount_dollars" id="paymentAmountDollars" type="number" step="0.01" min="0.01" required placeholder="0.00" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Payment Method</label>
+          <select name="payment_method" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white">
+            <option value="BANK_TRANSFER">Bank Wire / ACH</option>
+            <option value="CREDIT_CARD">Corporate Credit Card</option>
+            <option value="CHECK">Commercial Check</option>
+            <option value="CASH">Cash</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Notes</label>
+          <input name="notes" type="text" placeholder="Transaction ref / check number…" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="App.closeModal('paymentModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Post Allocation</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 4: CSV & PDF Import -->
+  <div id="importModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'importModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white shrink-0">
+        <div>
+          <h3 class="text-sm font-bold tracking-tight">Import Products Catalog (CSV or PDF)</h3>
+          <p class="text-[11px] text-slate-300">Upload vendor catalog, price sheet, or invoice in CSV or PDF format</p>
+        </div>
+        <button onclick="App.closeModal('importModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+          <button id="importTabFile" type="button" onclick="App.toggleImportTab('file')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-2xs">
+            Upload PDF / CSV File
+          </button>
+          <button id="importTabPaste" type="button" onclick="App.toggleImportTab('paste')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">
+            Paste CSV Text
+          </button>
+        </div>
+        <div>
+          <select id="importSourceTag" class="text-xs border border-slate-300 rounded-lg px-2.5 py-1 bg-white font-medium text-slate-700">
+            <option value="VENDOR_FEED">Source: VENDOR_FEED</option>
+            <option value="UCI_RETAIL">Source: UCI_RETAIL</option>
+            <option value="SYNTHETIC">Source: SYNTHETIC</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-6 space-y-4">
+        <!-- Tab 1: File Upload & Drag-Drop (PDF / CSV) -->
+        <div id="importPaneFile" class="space-y-4">
+          <div id="importDropzone" 
+               ondragover="event.preventDefault(); this.classList.add('border-indigo-500', 'bg-indigo-50/50');"
+               ondragleave="this.classList.remove('border-indigo-500', 'bg-indigo-50/50');"
+               ondrop="event.preventDefault(); this.classList.remove('border-indigo-500', 'bg-indigo-50/50'); App.handleImportDrop(event);"
+               class="border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-xl p-8 text-center bg-slate-50/60 transition cursor-pointer"
+               onclick="$('importFileInput').click()">
+            <input type="file" id="importFileInput" accept=".csv,.pdf,.txt,text/csv,application/pdf" class="hidden" onchange="App.handleImportFileSelect(event)" />
+            <div class="w-12 h-12 mx-auto rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mb-3">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </div>
+            <p class="text-xs font-bold text-slate-800 mb-1">Click to browse or drag & drop catalog document</p>
+            <p class="text-[11px] text-slate-500">Supports <strong class="text-slate-700">.PDF</strong> (price sheets, purchase catalogs) and <strong class="text-slate-700">.CSV</strong> files</p>
+          </div>
+
+          <!-- File Loaded Info Banner -->
+          <div id="importFileInfo" class="hidden p-3 rounded-lg border border-indigo-200 bg-indigo-50/70 flex items-center justify-between">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span id="importFileTypeBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-600 text-white uppercase">PDF</span>
+              <div class="min-w-0">
+                <p id="importFileName" class="text-xs font-semibold text-slate-900 truncate">catalog.pdf</p>
+                <p id="importFileSize" class="text-[10px] text-slate-500">24.5 KB • Parsing items…</p>
+              </div>
+            </div>
+            <button type="button" onclick="App.clearImportFile()" class="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1">Remove</button>
+          </div>
+
+          <!-- Live Preview Table Container -->
+          <div id="importPreviewContainer" class="hidden space-y-2">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-slate-800 uppercase tracking-wider">Extracted Products Preview</span>
+                <span id="importPreviewBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">0 items found</span>
+              </div>
+              <p class="text-[11px] text-slate-500">Verify extracted items before committing to catalog</p>
+            </div>
+            <div class="border border-slate-200 rounded-lg overflow-x-auto max-h-56">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr class="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                    <th class="p-2">SKU</th>
+                    <th class="p-2">Product Title</th>
+                    <th class="p-2">Category</th>
+                    <th class="p-2 text-right">Pack</th>
+                    <th class="p-2 text-right">Cost ($)</th>
+                    <th class="p-2 text-right">Sell ($)</th>
+                    <th class="p-2 text-right">Stock</th>
+                  </tr>
+                </thead>
+                <tbody id="importPreviewTbody" class="divide-y divide-slate-100 font-normal">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Direct Paste (CSV Textarea) -->
+        <div id="importPanePaste" class="hidden space-y-3">
+          <p class="text-xs text-slate-500">
+            Paste CSV rows with headers: <code class="bg-slate-100 px-1 py-0.5 rounded text-slate-800">sku,barcode,name,category,cost_price,sell_price,pack_size,lead_days,min_safety_stock</code>
+          </p>
+          <textarea id="importCsvText" rows="6" class="w-full text-xs font-mono border border-slate-300 rounded-lg p-3 bg-slate-50" placeholder="sku,barcode,name,category,cost_price,sell_price,pack_size,lead_days,min_safety_stock&#10;ELEC-USB-C,894101,USB-C Pro Cable,Electronics,3.50,9.99,10,7,20"></textarea>
+        </div>
+      </div>
+
+      <div class="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+        <button type="button" onclick="App.closeModal('importModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition">Cancel</button>
+        <button id="importSubmitBtn" type="button" onclick="App.submitImport()" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition shadow-xs">
+          Import Catalog
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 5: Add Catalog SKU -->
+  <div id="newProductModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'newProductModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <h3 class="text-sm font-bold tracking-tight">Add New Product to Catalog</h3>
+        <button onclick="App.closeModal('newProductModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <form id="newProductForm" onsubmit="App.submitNewProduct(event)" class="p-6 space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">SKU *</label>
+            <input name="sku" required placeholder="e.g. ELEC-001" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Barcode</label>
+            <input name="barcode" placeholder="e.g. 789102" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Product Title *</label>
+          <input name="name" required placeholder="e.g. Heavy Duty DisplayPort Cable" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Category</label>
+            <input name="category" placeholder="Electronics" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Unit</label>
+            <input name="base_unit" placeholder="pcs" value="pcs" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Pack Size *</label>
+            <input name="pack_size" type="number" min="1" value="1" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Lead Time (Days) *</label>
+            <input name="lead_days" type="number" min="1" value="7" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Cost Price ($)</label>
+            <input name="cost_price" type="number" step="0.01" min="0" placeholder="5.00" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Selling Price ($)</label>
+            <input name="sell_price" type="number" step="0.01" min="0" placeholder="12.00" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Min Safety Stock</label>
+            <input name="min_safety_stock" type="number" min="0" value="10" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Initial Stock Count</label>
+            <input name="initial_stock" type="number" min="0" value="0" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="App.closeModal('newProductModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Add to Catalog</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 6: Edit Catalog Product -->
+  <div id="editProductModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'editProductModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <h3 class="text-sm font-bold tracking-tight">Edit Product Specifications</h3>
+        <button onclick="App.closeModal('editProductModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <form id="editProductForm" onsubmit="App.submitEditProduct(event)" class="p-6 space-y-3">
+        <input type="hidden" id="editProductId" />
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">SKU *</label>
+            <input id="editProductSku" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Barcode</label>
+            <input id="editProductBarcode" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Product Title *</label>
+          <input id="editProductName" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Category</label>
+            <input id="editProductCategory" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Base Unit</label>
+            <input id="editProductUnit" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Pack Size *</label>
+            <input id="editProductPackSize" type="number" min="1" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Lead Time (Days) *</label>
+            <input id="editProductLeadDays" type="number" min="1" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Cost Price ($) *</label>
+            <input id="editProductCostPrice" type="number" step="0.01" min="0" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Selling Price ($) *</label>
+            <input id="editProductSellPrice" type="number" step="0.01" min="0" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Minimum Safety Stock</label>
+          <input id="editProductMinSafety" type="number" min="0" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="App.closeModal('editProductModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 7: Manage Business Contacts (Customers & Suppliers) -->
+  <div id="contactsModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'contactsModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[85vh]" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white shrink-0">
+        <div>
+          <h3 class="text-sm font-bold tracking-tight">Manage Business Contacts</h3>
+          <p class="text-[11px] text-slate-300">Suppliers for Restock Purchasing and Customers for Wholesale Orders</p>
+        </div>
+        <button onclick="App.closeModal('contactsModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <!-- Action Sub-header -->
+      <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+          <button id="contactTabAll" onclick="App.filterContactsTab('ALL')" class="px-3 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white">All</button>
+          <button id="contactTabSuppliers" onclick="App.filterContactsTab('SUPPLIER')" class="px-3 py-1 rounded-md text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Suppliers</button>
+          <button id="contactTabCustomers" onclick="App.filterContactsTab('CUSTOMER')" class="px-3 py-1 rounded-md text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Customers</button>
+        </div>
+        <button onclick="App.openNewContactForm()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold">
+          + Add Contact
+        </button>
+      </div>
+
+      <!-- Contacts List Table -->
+      <div class="flex-1 overflow-y-auto p-4">
+        <table class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold text-[11px]">
+              <th class="py-2.5 px-3">Name</th>
+              <th class="py-2.5 px-3">Type</th>
+              <th class="py-2.5 px-3">Email</th>
+              <th class="py-2.5 px-3">Terms (Days)</th>
+              <th class="py-2.5 px-3 text-right">Credit Limit</th>
+              <th class="py-2.5 px-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="contactsModalTableBody" class="divide-y divide-slate-100">
+            <!-- Populated via JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 8: Add / Edit Single Contact -->
+  <div id="contactFormModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'contactFormModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <h3 id="contactFormModalTitle" class="text-sm font-bold tracking-tight">Create Business Contact</h3>
+        <button onclick="App.closeModal('contactFormModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <form id="contactForm" onsubmit="App.submitContactForm(event)" class="p-6 space-y-3">
+        <input type="hidden" id="contactFormId" />
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Contact Type *</label>
+          <select id="contactFormType" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white">
+            <option value="SUPPLIER">Supplier (Vendor for Purchase Orders)</option>
+            <option value="CUSTOMER">Customer (Client for Sales Orders)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Company / Individual Name *</label>
+          <input id="contactFormName" required placeholder="e.g. Vanguard Industrial Supply" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Email</label>
+            <input id="contactFormEmail" type="email" placeholder="orders@company.com" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Phone</label>
+            <input id="contactFormPhone" placeholder="+1-555-0199" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Payment Terms (Days)</label>
+            <input id="contactFormTerms" type="number" min="0" value="30" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Credit Limit ($)</label>
+            <input id="contactFormCredit" type="number" step="100" min="0" value="0" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="App.closeModal('contactFormModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Save Contact</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 9: Set Capital Limit -->
+  <div id="capitalModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'capitalModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <h3 class="text-sm font-bold tracking-tight">Configure Working Capital</h3>
+        <button onclick="App.closeModal('capitalModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <form id="capitalForm" onsubmit="App.submitCapital(event)" class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Operating Cash Balance ($) *</label>
+          <input name="operating_cash_dollars" id="capOperatingCash" type="number" step="100" min="0" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          <p class="text-[11px] text-slate-500 mt-1">Total liquid bank balance for procurement.</p>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Mandatory Cash Reserve ($) *</label>
+          <input name="cash_reserve_dollars" id="capCashReserve" type="number" step="100" min="0" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          <p class="text-[11px] text-slate-500 mt-1">Buffer funds that the PO engine cannot touch.</p>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="App.closeModal('capitalModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Save Limits</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 10: Physical Cycle Count Audit -->
+  <div id="cycleCountModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'cycleCountModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white shrink-0">
+        <div>
+          <h3 class="text-sm font-bold tracking-tight">Physical Inventory Cycle Count</h3>
+          <p class="text-[11px] text-slate-300">Blind Counting, Variance Verification & Governance Approval</p>
+        </div>
+        <button onclick="App.closeModal('cycleCountModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+          <button id="ccTabList" onclick="App.toggleCycleCountView('list')" class="px-3 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white">Audits</button>
+          <button id="ccTabNew" onclick="App.toggleCycleCountView('new')" class="px-3 py-1 rounded-md text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">+ New Count</button>
+        </div>
+        <div id="ccStatusNotice" class="text-xs text-slate-500 font-medium"></div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-6" id="cycleCountBody">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 11: Receive Purchase Order (Partial / Full Receiving) -->
+  <div id="receivePoModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'receivePoModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <div>
+          <h3 id="receivePoTitle" class="text-sm font-bold tracking-tight">Receive Inbound Purchase Order</h3>
+          <p class="text-[11px] text-slate-300">Record physical delivery receipts to increment stock</p>
+        </div>
+        <button onclick="App.closeModal('receivePoModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <form id="receivePoForm" onsubmit="App.submitReceivePo(event)" class="p-6 space-y-4">
+        <input type="hidden" id="receivePoId" />
+        <div id="receivePoLinesContainer" class="space-y-3 max-h-60 overflow-y-auto">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="App.closeModal('receivePoModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Confirm Receipt</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 12: Fulfill Sales Order (Partial / Full Dispatch) -->
+  <div id="fulfillSoModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'fulfillSoModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <div>
+          <h3 id="fulfillSoTitle" class="text-sm font-bold tracking-tight">Dispatch Sales Order</h3>
+          <p class="text-[11px] text-slate-300">Deduct stock and release customer reservations</p>
+        </div>
+        <button onclick="App.closeModal('fulfillSoModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <form id="fulfillSoForm" onsubmit="App.submitFulfillSo(event)" class="p-6 space-y-4">
+        <input type="hidden" id="fulfillSoId" />
+        <div id="fulfillSoLinesContainer" class="space-y-3 max-h-60 overflow-y-auto">
+          <!-- Populated by JS -->
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="App.closeModal('fulfillSoModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Confirm Dispatch</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 13: Add Team Member & Role -->
+  <div id="addTeamModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'addTeamModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <h3 class="text-sm font-bold tracking-tight">Add Team Member</h3>
+        <button onclick="App.closeModal('addTeamModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <form id="addTeamForm" onsubmit="App.submitAddTeam(event)" class="p-6 space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+          <input id="newUserName" required placeholder="Jane Doe" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Email Address *</label>
+          <input id="newUserEmail" type="email" required placeholder="jane@company.com" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Password *</label>
+          <input id="newUserPassword" type="password" required placeholder="Minimum 6 characters" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Role & Permissions *</label>
+          <select id="newUserRole" required class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 bg-white">
+            <option value="PURCHASING">Purchasing (Create orders, manage vendors, view intelligence)</option>
+            <option value="WAREHOUSE">Warehouse (Receive stock, perform cycle counts, dispatch orders)</option>
+            <option value="OWNER">Owner (Full authority, override threshold approvals, manage team)</option>
+          </select>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="App.closeModal('addTeamModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Add Member</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal 14: Personal Account Profile & Settings -->
+  <div id="profileModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'profileModal')">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+        <div>
+          <h3 class="text-sm font-bold tracking-tight">Personal Account Profile</h3>
+          <p class="text-[11px] text-slate-300">View and update your personal user credentials</p>
+        </div>
+        <button onclick="App.closeModal('profileModal')" class="text-slate-400 hover:text-white">&times;</button>
+      </div>
+
+      <form id="profileForm" onsubmit="App.saveProfile(event)" class="p-6 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+          <input id="profileFullName" placeholder="Your Name" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
+          <input id="profileEmail" type="email" required placeholder="user@company.com" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Change Password / PIN</label>
+          <input id="profilePassword" type="password" placeholder="Leave blank to keep current password" class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2" />
+          <p class="text-[10px] text-slate-400 mt-0.5">Enter a new password only if you wish to reset it.</p>
+        </div>
+        <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+          <div>
+            <span class="text-[11px] text-slate-500">Assigned Role:</span>
+            <span id="profileRoleBadge" class="ml-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase">OWNER</span>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" onclick="App.closeModal('profileModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs">Save Profile</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       FLOATING AI ASSISTANT & COPILOT DRAWER
+  =========================================== -->
+  <button id="copilotTriggerBtn" onclick="App.toggleCopilot(true)" title="Ask AI Assistant (Ctrl+K or Alt+A)"
+    class="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-bold shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 select-none focus:outline-none focus:ring-2 focus:ring-indigo-500">
+    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+    <span>✨ Ask AI Assistant</span>
+    <span class="px-1.5 py-0.5 rounded text-[10px] bg-indigo-500/40 text-indigo-100 font-mono hidden sm:inline-block">Ctrl+K</span>
+  </button>
+
+  <!-- Slide-Over AI Copilot Drawer -->
+  <div id="copilotBackdrop" class="fixed inset-0 z-50 hidden bg-slate-900/40 backdrop-blur-[3px] transition-opacity" onclick="App.toggleCopilot(false)"></div>
+  <div id="copilotDrawer" class="fixed inset-y-0 right-0 z-50 w-full sm:w-[620px] lg:w-[700px] bg-white shadow-2xl border-l border-slate-200 flex flex-col transform translate-x-full transition-transform duration-300 ease-in-out" onclick="event.stopPropagation()">
+    <!-- Header -->
+    <div class="px-6 py-4.5 border-b border-slate-200 bg-slate-900 text-white flex items-center justify-between shrink-0">
+      <div class="flex items-center gap-3.5 min-w-0">
+        <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-base shrink-0 shadow-md">
+          ✨
+        </div>
+        <div class="min-w-0">
+          <h3 class="text-base font-bold tracking-tight text-white leading-tight">Smart Business Copilot</h3>
+          <p class="text-xs text-slate-300 truncate mt-0.5">Real-time inventory intelligence, purchasing analytics & workflow guidance</p>
+        </div>
+      </div>
+      <button onclick="App.toggleCopilot(false)" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition text-2xl leading-none">&times;</button>
+    </div>
+
+    <!-- Mode Selector & Progress Bar -->
+    <div class="px-6 py-3.5 border-b border-slate-200 bg-slate-50 shrink-0 space-y-2.5">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-xs font-semibold text-slate-700">Intelligence Engine:</span>
+        <div class="flex items-center gap-1.5 bg-slate-200/90 p-1 rounded-xl text-xs">
+          <button id="copilotModeInstant" type="button" onclick="App.setCopilotMode('instant')" class="px-3.5 py-1.5 rounded-lg font-bold bg-white text-indigo-700 shadow-2xs transition">
+            ⚡ Real-Time Ledger
+          </button>
+          <button id="copilotModeLlm" type="button" onclick="App.setCopilotMode('llm')" class="px-3.5 py-1.5 rounded-lg font-semibold text-slate-600 hover:text-slate-900 transition">
+            🧠 Smart Reasoning
+          </button>
+        </div>
+      </div>
+
+      <!-- LLM Download/Cache Status Bar (hidden by default) -->
+      <div id="copilotLlmStatus" class="hidden p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-xs space-y-1.5">
+        <div class="flex items-center justify-between text-indigo-900 font-semibold">
+          <span id="copilotLlmStatusText">Loading reasoning model...</span>
+          <span id="copilotLlmProgressPercent" class="font-mono">0%</span>
+        </div>
+        <div class="w-full bg-indigo-200/70 h-2 rounded-full overflow-hidden">
+          <div id="copilotLlmProgressBar" class="bg-indigo-600 h-full rounded-full transition-all duration-200" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Prompt Starter Chips -->
+    <div class="px-6 py-3 border-b border-slate-100 bg-white flex items-center gap-2 overflow-x-auto shrink-0 select-none no-scrollbar">
+      <button onclick="App.askCopilotPrompt('Show me live inventory status and all stocks')" class="shrink-0 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 border border-slate-200 transition shadow-2xs flex items-center gap-1.5">
+        <span>📦</span> Live Stocks
+      </button>
+      <button onclick="App.askCopilotPrompt('Explain our Purchasing Budget and safe spending limit')" class="shrink-0 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 border border-slate-200 transition shadow-2xs flex items-center gap-1.5">
+        <span>💰</span> Purchasing Budget
+      </button>
+      <button onclick="App.askCopilotPrompt('Which SKUs are at risk of stockout and need replenishment?')" class="shrink-0 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 border border-slate-200 transition shadow-2xs flex items-center gap-1.5">
+        <span>⚠️</span> Stockout Risks
+      </button>
+      <button onclick="App.askCopilotPrompt('How do our ML P50 and P90 demand forecasts work?')" class="shrink-0 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 border border-slate-200 transition shadow-2xs flex items-center gap-1.5">
+        <span>📈</span> ML Forecasts
+      </button>
+      <button onclick="App.askCopilotPrompt('How do blind stock counts and variance approvals work?')" class="shrink-0 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-slate-700 border border-slate-200 transition shadow-2xs flex items-center gap-1.5">
+        <span>📋</span> Blind Audits
+      </button>
+    </div>
+
+    <!-- Messages Container -->
+    <div id="copilotMessages" class="flex-1 overflow-y-auto p-6 md:p-7 space-y-5 bg-slate-50/70 overflow-x-hidden break-words">
+      <!-- Welcome Message -->
+      <div class="flex items-start gap-3.5">
+        <div class="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-sm font-bold shrink-0 shadow-sm mt-0.5">
+          ✨
+        </div>
+        <div class="flex-1 bg-white border border-slate-200 rounded-2xl rounded-tl-sm p-5 shadow-sm space-y-3 text-xs text-slate-800 leading-relaxed">
+          <p class="font-bold text-slate-900 text-sm">Hello! I am your Smart Business Copilot.</p>
+          <p class="text-slate-600 leading-relaxed">I provide real-time, verified answers directly from your active business database. Inquire about live stock levels, safe purchasing limits, open orders, or replenishment math.</p>
+          <div class="pt-2 border-t border-slate-100 space-y-2">
+            <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Suggested Queries:</span>
+            <div class="space-y-1.5 text-indigo-600 font-medium">
+              <p class="cursor-pointer hover:underline flex items-center gap-1.5" onclick="App.askCopilotPrompt('Show me live inventory status and all stocks')">
+                <span class="text-slate-400">•</span> Show me live inventory status and all stocks
+              </p>
+              <p class="cursor-pointer hover:underline flex items-center gap-1.5" onclick="App.askCopilotPrompt('What is our safe purchasing budget right now?')">
+                <span class="text-slate-400">•</span> What is our safe purchasing budget right now?
+              </p>
+              <p class="cursor-pointer hover:underline flex items-center gap-1.5" onclick="App.askCopilotPrompt('Which SKUs are at risk of stockout and need replenishment?')">
+                <span class="text-slate-400">•</span> Which SKUs are at risk of stockout and need replenishment?
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Typing Indicator (hidden by default) -->
+    <div id="copilotTyping" class="hidden px-6 py-3 bg-slate-50/80 border-t border-slate-100 flex items-center gap-2 text-xs text-slate-500">
+      <span class="w-2 h-2 rounded-full bg-indigo-600 animate-bounce"></span>
+      <span class="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.2s]"></span>
+      <span class="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.4s]"></span>
+      <span id="copilotTypingText" class="text-xs font-medium text-slate-500 ml-1">Evaluating live business data…</span>
+    </div>
+
+    <!-- Input Form -->
+    <div class="p-4 md:p-5 border-t border-slate-200 bg-white shrink-0">
+      <form id="copilotForm" onsubmit="App.handleCopilotSubmit(event)" class="space-y-2">
+        <div class="relative flex items-center">
+          <input type="text" id="copilotInput" placeholder="Ask about stocks, purchasing budget, SKUs, or workflows…" 
+            class="w-full pl-4 pr-24 py-3.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition shadow-2xs" />
+          <button type="submit" id="copilotSendBtn" class="absolute right-2 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5">
+            <span>Send</span>
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+            </svg>
+          </button>
+        </div>
+        <div class="flex items-center justify-between text-[11px] text-slate-400 px-1 pt-1">
+          <span>Real-time verified business intelligence</span>
+          <button type="button" onclick="App.clearCopilotHistory()" class="hover:text-slate-600 underline">Clear Chat</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Global Toast Notification Container -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <script src="/js/views/forecasts.js?v=2.5"></script>
+  <script src="/js/app.js?v=2.5"></script>
+</body>
+</html>
