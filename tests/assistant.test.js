@@ -212,7 +212,46 @@ test('Vanguard Copilot AI Assistant: Live Context & Deterministic RAG Verificati
       assert.ok(data.groundedAnswer.includes('OWNER'));
     });
 
-    // 7. Unauthenticated guard
+    // 7. Distinct answers across B2B, How-To, and Follow-up Memory
+    await t.test('POST /api/assistant/ask gives distinct answers for B2B, How-To, and follow-up memory', async () => {
+      const b2bRes = await fetch(`${baseUrl}/api/assistant/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie1 },
+        body: JSON.stringify({ question: 'How does the B2B wholesale network work?' })
+      });
+      assert.equal(b2bRes.status, 200);
+      const b2bData = await b2bRes.json();
+      assert.ok(b2bData.groundedAnswer.includes('B2B'), 'Should answer about B2B Trade Network');
+
+      const howToRes = await fetch(`${baseUrl}/api/assistant/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie1 },
+        body: JSON.stringify({ question: 'How do I import a PDF or CSV order and revert a mistake?' })
+      });
+      assert.equal(howToRes.status, 200);
+      const howToData = await howToRes.json();
+      assert.ok(howToData.groundedAnswer.includes('Import Order') || howToData.groundedAnswer.includes('Revert'), 'Should explain PDF/CSV import and reversibility');
+
+      // Follow-up memory referencing SKU-FAST-01 from previous turn
+      const followUpRes = await fetch(`${baseUrl}/api/assistant/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Cookie: cookie1 },
+        body: JSON.stringify({
+          question: 'What is its margin and reorder status?',
+          history: [
+            { role: 'user', content: 'Tell me about SKU-FAST-01' },
+            { role: 'assistant', content: 'SKU-FAST-01 has 50 units on hand.' }
+          ]
+        })
+      });
+      assert.equal(followUpRes.status, 200);
+      const followUpData = await followUpRes.json();
+      assert.ok(followUpData.groundedAnswer.includes('SKU-FAST-01'), 'Should resolve SKU-FAST-01 from conversation history');
+      assert.notEqual(b2bData.groundedAnswer, howToData.groundedAnswer);
+      assert.notEqual(howToData.groundedAnswer, followUpData.groundedAnswer);
+    });
+
+    // 8. Unauthenticated guard
     await t.test('Unauthenticated requests are rejected', async () => {
       const res = await fetch(`${baseUrl}/api/assistant/context`);
       assert.equal(res.status, 401);

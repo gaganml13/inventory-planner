@@ -26,8 +26,8 @@ function seedDatabase(customDb) {
   const db = customDb || getDb();
   runMigrations(db);
 
-  // Check if business already exists
-  const existingBiz = db.prepare('SELECT id FROM businesses LIMIT 1').get();
+  // Check if primary/demo business already exists
+  const existingBiz = db.prepare("SELECT id FROM businesses WHERE is_demo = 1 OR slug = 'demo-vanguard-wholesale' OR slug NOT LIKE 'partner-%' LIMIT 1").get();
   if (existingBiz) {
     db.prepare(`
       UPDATE businesses 
@@ -43,6 +43,7 @@ function seedDatabase(customDb) {
         VALUES (?, ?, ?, ?, ?)
       `).run('guest@vanguardwholesale.demo', 'guest_mode_hash', 'Guest Operator', existingBiz.id, 1);
     }
+    ensureB2bNetworkSeeded(db, existingBiz.id);
     return existingBiz.id;
   }
 
@@ -405,89 +406,183 @@ function seedDatabase(customDb) {
     paymentInsert.run(poId, 150000, 'BANK_TRANSFER', 'Advance supplier payment deposit', poDate);
 
     // 9. Seed B2B Wholesale Profile & Listings
-    db.prepare(`
-      INSERT OR REPLACE INTO b2b_profiles (
-        business_id, public_name, category, city, gst_or_reg_no, is_verified, min_order_cents, delivery_days, is_public, description
-      ) VALUES (?, ?, ?, ?, ?, 1, 25000, 2, 1, ?)
-    `).run(
-      businessId,
-      'Vanguard Wholesale Distribution Corp',
-      'Industrial, IT & Workplace Consumables',
-      'Seattle Distribution Center (Metro Hub)',
-      'GST-9921-VAN-01',
-      'Premier regional B2B wholesale fulfillment hub supplying high-velocity commercial goods with verified 48h dispatch.'
-    );
+    ensureB2bNetworkSeeded(db, businessId);
+  });
 
-    // List 4 core products on B2B
-    const b2bListSkus = ['CONS-COPY-A4', 'ELEC-USB-C2M', 'ELEC-HDMI-4K', 'SAFE-HELM-PRO'];
+  seedTx();
+  return businessId;
+}
+
+/**
+ * Idempotently seeds B2B profiles and 5 realistic wholesale products for Vanguard + 2 verified partners.
+ */
+function ensureB2bNetworkSeeded(db, primaryBizId) {
+  if (!primaryBizId) return;
+
+  db.prepare(`
+    INSERT OR IGNORE INTO b2b_profiles (
+      business_id, public_name, category, city, gst_or_reg_no, is_verified, min_order_cents, delivery_days, is_public, description
+    ) VALUES (?, ?, ?, ?, ?, 1, 25000, 2, 1, ?)
+  `).run(
+    primaryBizId,
+    'Vanguard Wholesale Distribution Corp',
+    'Industrial, IT & Workplace Consumables',
+    'Seattle Distribution Center (Metro Hub)',
+    'GST-9921-VAN-01',
+    'Premier regional B2B wholesale fulfillment hub supplying high-velocity commercial goods with verified 48h dispatch.'
+  );
+
+  // Ensure Vanguard has 5 core products listed on B2B if none are listed yet
+  const listedCount = db.prepare('SELECT COUNT(*) AS cnt FROM products WHERE business_id = ? AND is_b2b_listed = 1').get(primaryBizId)?.cnt || 0;
+  if (listedCount === 0) {
+    const b2bListSkus = ['CONS-COPY-A4', 'ELEC-USB-C2M', 'ELEC-HDMI-4K', 'SAFE-HELM-PRO', 'PACK-TAPE-48'];
     for (const sku of b2bListSkus) {
-      const p = productMap[sku];
+      const p = db.prepare('SELECT id, sell_price_cents, pack_size FROM products WHERE business_id = ? AND sku = ?').get(primaryBizId, sku);
       if (p) {
         db.prepare(`
           UPDATE products 
-          SET is_b2b_listed = 1, b2b_price_cents = ?, b2b_moq = 5
+          SET is_b2b_listed = 1, b2b_price_cents = COALESCE(b2b_price_cents, ?), b2b_moq = COALESCE(NULLIF(b2b_moq, 1), ?, 5)
           WHERE id = ?
-        `).run(Math.round(p.sell_price_cents * 0.85), p.id);
+        `).run(Math.round(p.sell_price_cents * 0.85), p.pack_size || 5, p.id);
       }
     }
+  }
 
-    // Seed Verified Partner B2B Business (Pacific Coast Trade Logistics)
-    const existingPartner = db.prepare("SELECT id FROM businesses WHERE slug = 'partner-pacific-wholesale' LIMIT 1").get();
+  // Seed Partner 1 & Partner 2 with 5 active B2B products each
+  const partners = [
+    {
+      slug: 'partner-pacific-wholesale',
+      name: 'Pacific Coast Trade Logistics',
+      category: 'Office Automation, Cables & Safety Hardware',
+      city: 'Portland Logistics Park',
+      gst: 'GST-8812-PAC-02',
+      minOrder: 15000,
+      deliveryDays: 3,
+      desc: 'Direct manufacturer distributor with nationwide pallet shipping and verified stock guarantees.',
+      products: [
+        { sku: 'CONS-COPY-A4', name: 'A4 Bright White Paper (500s Ream)', cat: 'Consumables', b2bPrice: 520, moq: 10, stock: 850 },
+        { sku: 'ELEC-MECH-KB', name: 'Ergonomic Mechanical Keyboard', cat: 'Electronics', b2bPrice: 4200, moq: 2, stock: 120 },
+        { sku: 'SAFE-VEST-HIV', name: 'High-Visibility Safety Vest (Class 2)', cat: 'Safety Gear', b2bPrice: 850, moq: 5, stock: 400 },
+        { sku: 'ELEC-USB-C2M', name: 'USB-C Fast Charging Cable 2M', cat: 'Electronics', b2bPrice: 680, moq: 10, stock: 600 },
+        { sku: 'PACK-TAPE-48', name: 'Heavy-Duty Acrylic Packing Tape 48mm', cat: 'Packaging', b2bPrice: 1850, moq: 4, stock: 310 }
+      ]
+    },
+    {
+      slug: 'partner-metro-industrial',
+      name: 'Metro Industrial Supply',
+      category: 'Safety PPE, Packaging & Facility Bulk',
+      city: 'Chicago Midwest Hub',
+      gst: 'GST-7741-MET-03',
+      minOrder: 20000,
+      deliveryDays: 2,
+      desc: 'Certified industrial safety and warehouse packaging wholesaler with 48-hour regional freight.',
+      products: [
+        { sku: 'SAFE-HELM-PRO', name: 'Industrial Safety Helmet (ANSI Z89.1)', cat: 'Safety Gear', b2bPrice: 1590, moq: 5, stock: 260 },
+        { sku: 'SAFE-VEST-HIV', name: 'High-Visibility Safety Vest (Class 2)', cat: 'Safety Gear', b2bPrice: 820, moq: 10, stock: 540 },
+        { sku: 'ELEC-HDMI-4K', name: 'Braided HDMI 2.1 Cable 4K/120Hz', cat: 'Electronics', b2bPrice: 1120, moq: 5, stock: 290 },
+        { sku: 'PACK-TAPE-48', name: 'Heavy-Duty Acrylic Packing Tape 48mm', cat: 'Packaging', b2bPrice: 1790, moq: 5, stock: 480 },
+        { sku: 'CONS-COPY-A4', name: 'A4 Bright White Paper (500s Ream)', cat: 'Consumables', b2bPrice: 540, moq: 10, stock: 1200 }
+      ]
+    }
+  ];
+
+  for (const partner of partners) {
+    let partnerBiz = db.prepare('SELECT id FROM businesses WHERE slug = ? LIMIT 1').get(partner.slug);
     let partnerBizId;
-    if (!existingPartner) {
+    if (!partnerBiz) {
       const pRes = db.prepare(`
         INSERT INTO businesses (name, slug, currency, timezone, operating_cash_cents, cash_reserve_cents, is_demo)
-        VALUES ('Pacific Coast Trade Logistics', 'partner-pacific-wholesale', 'USD', 'America/Los_Angeles', 25000000, 5000000, 0)
-      `).run();
+        VALUES (?, ?, 'USD', 'America/Los_Angeles', 25000000, 5000000, 0)
+      `).run(partner.name, partner.slug);
       partnerBizId = pRes.lastInsertRowid;
     } else {
-      partnerBizId = existingPartner.id;
+      partnerBizId = partnerBiz.id;
+    }
+
+    // Ensure partner has a default location
+    let loc = db.prepare('SELECT id FROM locations WHERE business_id = ? LIMIT 1').get(partnerBizId);
+    if (!loc) {
+      const lRes = db.prepare('INSERT INTO locations (business_id, name, description) VALUES (?, ?, ?)').run(
+        partnerBizId, `${partner.city} Depot`, 'Primary partner fulfillment warehouse'
+      );
+      loc = { id: lRes.lastInsertRowid };
     }
 
     db.prepare(`
       INSERT OR REPLACE INTO b2b_profiles (
         business_id, public_name, category, city, gst_or_reg_no, is_verified, min_order_cents, delivery_days, is_public, description
-      ) VALUES (?, ?, ?, ?, ?, 1, 15000, 3, 1, ?)
+      ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, 1, ?)
     `).run(
-      partnerBizId,
-      'Pacific Coast Trade Logistics',
-      'Office Automation, Cables & Safety Hardware',
-      'Portland Logistics Park',
-      'GST-8812-PAC-02',
-      'Direct manufacturer distributor with nationwide pallet shipping and verified stock guarantees.'
+      partnerBizId, partner.name, partner.category, partner.city, partner.gst,
+      partner.minOrder, partner.deliveryDays, partner.desc
     );
 
-    // Partner products (matching SKUs to enable Smart Restock Matches!)
-    const partnerProducts = [
-      { sku: 'CONS-COPY-A4', name: 'A4 Bright White Paper (500s Ream)', cat: 'Consumables', b2bPrice: 520, moq: 10, stock: 850 },
-      { sku: 'ELEC-MECH-KB', name: 'Ergonomic Mechanical Keyboard', cat: 'Electronics', b2bPrice: 4200, moq: 2, stock: 120 },
-      { sku: 'SAFE-VEST-HIV', name: 'High-Visibility Safety Vest (Class 2)', cat: 'Safety Gear', b2bPrice: 850, moq: 5, stock: 400 }
-    ];
-
-    for (const pp of partnerProducts) {
+    for (const pp of partner.products) {
       const existProd = db.prepare('SELECT id FROM products WHERE business_id = ? AND sku = ?').get(partnerBizId, pp.sku);
-      let ppId;
       if (!existProd) {
         const ins = db.prepare(`
           INSERT INTO products (
             business_id, sku, barcode, name, category, base_unit, pack_size, lead_days,
             min_safety_stock, cost_price_cents, sell_price_cents, is_b2b_listed, b2b_price_cents, b2b_moq
-          ) VALUES (?, ?, ?, ?, ?, 'units', 5, 3, 10, ?, ?, 1, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, 'units', 5, ?, 10, ?, ?, 1, ?, ?)
         `).run(
-          partnerBizId, pp.sku, pp.sku, pp.name, pp.cat,
+          partnerBizId, pp.sku, pp.sku, pp.name, pp.cat, partner.deliveryDays,
           Math.round(pp.b2bPrice * 0.75), pp.b2bPrice, pp.b2bPrice, pp.moq
         );
-        ppId = ins.lastInsertRowid;
+        const ppId = ins.lastInsertRowid;
         db.prepare(`
           INSERT INTO stock_movements (business_id, product_id, location_id, change_qty, balance_after, reason)
-          VALUES (?, ?, 1, ?, ?, 'INITIAL_B2B_PARTNER_STOCK')
-        `).run(partnerBizId, ppId, pp.stock, pp.stock);
+          VALUES (?, ?, ?, ?, ?, 'INITIAL_B2B_PARTNER_STOCK')
+        `).run(partnerBizId, ppId, loc.id, pp.stock, pp.stock);
       }
     }
-  });
+  }
+}
 
-  seedTx();
-  return businessId;
+/**
+ * Resets the Demo Guest business back to a clean initial seeded state.
+ */
+function resetDemoDatabase(db, demoBusinessId) {
+  const guestUser = db.prepare('SELECT id FROM users WHERE business_id = ? AND is_guest = 1 LIMIT 1').get(demoBusinessId);
+  const activeSessions = guestUser
+    ? db.prepare('SELECT id, expires_at FROM sessions WHERE user_id = ?').all(guestUser.id)
+    : [];
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare('DELETE FROM b2b_trade_orders WHERE buyer_business_id = ? OR seller_business_id = ?').run(demoBusinessId, demoBusinessId);
+    db.prepare('DELETE FROM payment_allocations WHERE order_id IN (SELECT id FROM orders WHERE business_id = ?)').run(demoBusinessId);
+    db.prepare('DELETE FROM cycle_count_items WHERE cycle_count_id IN (SELECT id FROM cycle_counts WHERE business_id = ?)').run(demoBusinessId);
+    db.prepare('DELETE FROM cycle_counts WHERE business_id = ?').run(demoBusinessId);
+    db.prepare('DELETE FROM stock_movements WHERE business_id = ?').run(demoBusinessId);
+    db.prepare('DELETE FROM order_lines WHERE order_id IN (SELECT id FROM orders WHERE business_id = ?)').run(demoBusinessId);
+    db.prepare('DELETE FROM orders WHERE business_id = ?').run(demoBusinessId);
+    db.prepare('DELETE FROM purchase_recommendations WHERE business_id = ?').run(demoBusinessId);
+    db.prepare('DELETE FROM demand_forecasts WHERE business_id = ?').run(demoBusinessId);
+    db.prepare('DELETE FROM ml_training_runs WHERE business_id = ?').run(demoBusinessId);
+    db.prepare('DELETE FROM data_import_hashes WHERE business_id = ?').run(demoBusinessId);
+    db.prepare('DELETE FROM products WHERE business_id = ?').run(demoBusinessId);
+    db.prepare('DELETE FROM contacts WHERE business_id = ?').run(demoBusinessId);
+    db.prepare('DELETE FROM locations WHERE business_id = ?').run(demoBusinessId);
+    db.prepare('DELETE FROM b2b_profiles WHERE business_id = ?').run(demoBusinessId);
+    db.prepare('DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE business_id = ?)').run(demoBusinessId);
+    db.prepare('DELETE FROM users WHERE business_id = ?').run(demoBusinessId);
+    db.prepare('DELETE FROM businesses WHERE id = ?').run(demoBusinessId);
+    db.exec('COMMIT');
+  } catch (err) {
+    try { db.exec('ROLLBACK'); } catch (_) {}
+    throw err;
+  }
+
+  const newBizId = seedDatabase(db);
+  const newGuest = db.prepare('SELECT id FROM users WHERE business_id = ? AND is_guest = 1 LIMIT 1').get(newBizId);
+  if (newGuest && activeSessions.length > 0) {
+    const insSess = db.prepare('INSERT OR REPLACE INTO sessions (id, user_id, business_id, expires_at) VALUES (?, ?, ?, ?)');
+    for (const s of activeSessions) {
+      insSess.run(s.id, newGuest.id, newBizId, s.expires_at);
+    }
+  }
+  return newBizId;
 }
 
 if (require.main === module) {
@@ -495,4 +590,4 @@ if (require.main === module) {
   console.log(`Successfully seeded database for business #${bizId}`);
 }
 
-module.exports = { seedDatabase };
+module.exports = { seedDatabase, ensureB2bNetworkSeeded, resetDemoDatabase };

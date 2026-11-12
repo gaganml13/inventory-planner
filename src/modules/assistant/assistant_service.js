@@ -228,6 +228,56 @@ class AssistantService {
       forecasts = [];
     }
 
+    // 9. B2B Wholesale Network Summary
+    let b2bSummary = {
+      wholesalersCount: 0,
+      wholesalers: [],
+      myListedCount: 0,
+      myProfilePublic: false,
+      inboundOrders: [],
+      outboundOrders: [],
+      networkSkus: []
+    };
+    try {
+      const wholesalers = this.db.prepare(`
+        SELECT bp.business_id, bp.public_name, bp.city, bp.delivery_days,
+               (SELECT COUNT(*) FROM products p WHERE p.business_id = bp.business_id AND p.is_b2b_listed = 1 AND p.is_archived = 0) AS listed_count
+        FROM b2b_profiles bp
+        WHERE bp.is_public = 1 AND bp.business_id != ?
+        ORDER BY bp.public_name ASC
+      `).all(businessId);
+      const myProf = this.db.prepare('SELECT is_public, public_name FROM b2b_profiles WHERE business_id = ?').get(businessId);
+      const myListed = this.db.prepare('SELECT COUNT(*) AS cnt FROM products WHERE business_id = ? AND is_b2b_listed = 1 AND is_archived = 0').get(businessId);
+      const inbound = this.db.prepare(`
+        SELECT t.id, t.status, t.total_cents, b.name AS buyer_name
+        FROM b2b_trade_orders t JOIN businesses b ON t.buyer_business_id = b.id
+        WHERE t.seller_business_id = ? ORDER BY t.id DESC LIMIT 10
+      `).all(businessId);
+      const outbound = this.db.prepare(`
+        SELECT t.id, t.status, t.total_cents, b.name AS seller_name
+        FROM b2b_trade_orders t JOIN businesses b ON t.seller_business_id = b.id
+        WHERE t.buyer_business_id = ? ORDER BY t.id DESC LIMIT 10
+      `).all(businessId);
+      const networkSkus = this.db.prepare(`
+        SELECT p.sku, p.name, p.b2b_price_cents, p.b2b_moq, bp.public_name AS seller_name, bp.delivery_days
+        FROM products p
+        JOIN b2b_profiles bp ON p.business_id = bp.business_id
+        WHERE p.business_id != ? AND p.is_b2b_listed = 1 AND p.is_archived = 0 AND bp.is_public = 1
+      `).all(businessId);
+
+      b2bSummary = {
+        wholesalersCount: wholesalers.length,
+        wholesalers,
+        myListedCount: myListed ? myListed.cnt : 0,
+        myProfilePublic: myProf ? Boolean(myProf.is_public) : false,
+        inboundOrders: inbound,
+        outboundOrders: outbound,
+        networkSkus
+      };
+    } catch (_) {
+      // B2B tables might not exist in isolated unit tests
+    }
+
     return {
       business: {
         id: biz.id,
@@ -274,7 +324,8 @@ class AssistantService {
       recentSalesOrders,
       suppliers,
       customers,
-      forecastsSummary: forecasts
+      forecastsSummary: forecasts,
+      b2bSummary
     };
   }
 
@@ -292,19 +343,107 @@ class AssistantService {
     const sources = [];
     const suggestedActions = [];
 
-    // Helper: Find if a specific SKU was mentioned
-    const mentionedProduct = context.inventorySummary.products.find(
-      (p) => qLower.includes(p.sku.toLowerCase()) || (p.name && qLower.includes(p.name.toLowerCase()))
-    );
+    // Helper: Find a specific SKU or partial product name in text
+    const stopWords = new Set(['the', 'and', 'for', 'with', 'how', 'what', 'when', 'where', 'which', 'much', 'many', 'stock', 'price', 'cost', 'sell', 'unit', 'units', 'buy', 'order', 'have', 'left', 'about', 'from', 'that', 'this', 'there', 'should', 'could', 'would', 'network', 'b2b']);
+    const findProductInText = (text) => {
+      if (!text) return null;
+      const t = text.toLowerCase();
+      // 1. Exact SKU match
+      const bySku = context.inventorySummary.products.find((p) => t.includes(p.sku.toLowerCase()));
+      if (bySku) return bySku;
+      // 2. Exact full name match
+      const byName = context.inventorySummary.products.find((p) => p.name && t.includes(p.name.toLowerCase()));
+      if (byName) return byName;
+      // 3. Partial keyword match (score meaningful words >= 3 chars)
+      const tokens = t.replace(/[^a-z0-9\s-]/g, ' ').split(/\s+/).filter((w) => w.length >= 3 && !stopWords.has(w));
+      if (tokens.length === 0) return null;
+      let best = null;
+      let bestScore = 0;
+      for (const p of context.inventorySummary.products) {
+        const hay = `${p.sku} ${p.name || ''}`.toLowerCase();
+        let score = 0;
+        for (const tok of tokens) {
+          if (hay.includes(tok)) score += 1;
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          best = p;
+        }
+      }
+      return bestScore >= 1 ? best : null;
+    };
+
+    let mentionedProduct = findProductInText(qLower);
+    let isFollowUpProduct = false;
+
+    // Contextual Follow-Up Memory (last 4 messages)
+    if (!mentionedProduct && Array.isArray(history) && history.length > 0) {
+      const isFollowUpCue = /\b(it|this|that|its|reorder|b2b|forecast|margin|price|restock|buy|how much|available)\b/.test(qLower);
+      const isDifferentBroadTopic = /\b(budget|cash|blind|audit|import|pdf|csv|unconfirm|revert|wholesaler|all stock|all items|summary)\b/.test(qLower) && !/\b(it|its|this|that)\b/.test(qLower);
+      if (isFollowUpCue && !isDifferentBroadTopic) {
+        const recent = history.slice(-4).reverse();
+        for (const msg of recent) {
+          const content = msg?.content || msg?.text || '';
+          const prevProd = findProductInText(content);
+          if (prevProd) {
+            mentionedProduct = prevProd;
+            isFollowUpProduct = true;
+            break;
+          }
+        }
+      }
+    }
 
     // ──────────────────────────────────────────
-    // Intent 1: Specific SKU / Product Query
+    // Intent 1: Specific SKU / Product Query (including Follow-Ups)
     // ──────────────────────────────────────────
     if (mentionedProduct) {
       sources.push(`Catalog Ledger (${mentionedProduct.sku})`, 'Stock Movement Audit');
       const isCritical = mentionedProduct.available <= (mentionedProduct.min_safety_stock || 0);
+      const sellVal = parseFloat(mentionedProduct.sell_price_dollars) || 0;
+      const costVal = parseFloat(mentionedProduct.cost_price_dollars) || 0;
+      const marginPct = sellVal > 0 ? (((sellVal - costVal) / sellVal) * 100).toFixed(1) : '0.0';
+      const forecast = (context.forecastsSummary || []).find((f) => f.sku === mentionedProduct.sku);
+      const b2bMatches = (context.b2bSummary?.networkSkus || []).filter((n) => n.sku === mentionedProduct.sku);
+      const targetLevel = forecast ? Math.max(mentionedProduct.min_safety_stock, Math.ceil(forecast.p90_qty)) : (mentionedProduct.min_safety_stock * 2);
+      const suggestedReorderQty = Math.max(0, targetLevel - mentionedProduct.available - mentionedProduct.incoming_po);
 
-      if (!isReasoning) {
+      // Follow-up specifically asking about B2B availability for this SKU
+      if (qLower.includes('b2b') || qLower.includes('network') || qLower.includes('wholesaler')) {
+        sources.push('B2B Wholesale Network');
+        if (b2bMatches.length > 0) {
+          groundedAnswer = [
+            `### 🌐 B2B Network Availability: **${mentionedProduct.sku}** (${mentionedProduct.name})`,
+            `Yes! **${b2bMatches.length}** verified wholesaler(s) currently list **${mentionedProduct.sku}** on the B2B Trade Network:`,
+            '',
+            ...b2bMatches.map((m) => `- **${m.seller_name}**: **${currSym}${(m.b2b_price_cents / 100).toFixed(2)}**/unit (MOQ: **${m.b2b_moq}** units, Delivery: **${m.delivery_days}d**)`) ,
+            '',
+            `Your current net available stock is **${mentionedProduct.available}** units${suggestedReorderQty > 0 ? ` (suggested reorder: **${suggestedReorderQty}** units)` : ''}. Open **🌐 B2B Trade Network** to place a direct synced order.`
+          ].join('\n');
+        } else {
+          groundedAnswer = [
+            `### 🌐 B2B Network Availability: **${mentionedProduct.sku}**`,
+            `Currently no partner wholesalers on the B2B Trade Network have **${mentionedProduct.sku}** published. You can create a standard Purchase Order with your regular supplier instead.`
+          ].join('\n');
+        }
+        suggestedActions.push({ label: 'Open B2B Network', tab: 'b2b' }, { label: 'Create Purchase Order', action: 'newPo' });
+      }
+      // Follow-up specifically asking how much to reorder
+      else if (isFollowUpProduct && (qLower.includes('reorder') || qLower.includes('how much') || qLower.includes('buy'))) {
+        sources.push('Demand Planning Engine');
+        groundedAnswer = [
+          `### 📦 Reorder Recommendation: **${mentionedProduct.sku}** (${mentionedProduct.name})`,
+          `- **Current Available:** **${mentionedProduct.available}** units | **Incoming PO:** **${mentionedProduct.incoming_po}** units`,
+          `- **Safety Stock Floor:** **${mentionedProduct.min_safety_stock}** units (Lead Time: **${mentionedProduct.lead_days}d**)`,
+          forecast ? `- **14-Day ML Forecast:** Expected **${Math.round(forecast.p50_qty)}** (P50) | Peak **${Math.round(forecast.p90_qty)}** (P90)` : `- **14-Day ML Forecast:** Not yet generated (using 2× safety stock target)`,
+          '',
+          suggestedReorderQty > 0
+            ? `✅ **Recommended Reorder Quantity:** **${suggestedReorderQty} units** (Est. Cost: **${currSym}${(suggestedReorderQty * costVal).toFixed(2)}** at ${currSym}${costVal.toFixed(2)}/unit).`
+            : `✅ **No Immediate Reorder Needed:** Your available + incoming stock (**${mentionedProduct.available + mentionedProduct.incoming_po}** units) already covers target demand (**${targetLevel}** units).`
+        ].join('\n');
+        suggestedActions.push({ label: 'Create Purchase Order', action: 'newPo' }, { label: 'Demand Planning', tab: 'insights' });
+      }
+      else if (!isReasoning) {
         groundedAnswer = [
           `### Product Status: **${mentionedProduct.sku}** (${mentionedProduct.name})`,
           `- **Category:** ${mentionedProduct.category || 'General'}`,
@@ -313,12 +452,14 @@ class AssistantService {
           `- **Net Available Stock:** **${mentionedProduct.available}** units`,
           `- **Inbound Purchase Orders:** **${mentionedProduct.incoming_po}** units`,
           `- **Safety Stock Ceiling:** **${mentionedProduct.min_safety_stock}** units (Lead Time: **${mentionedProduct.lead_days}** days)`,
-          `- **Unit Pricing:** Cost **${currSym}${mentionedProduct.cost_price_dollars}** | Sell **${currSym}${mentionedProduct.sell_price_dollars}**`,
+          `- **Unit Pricing & Margin:** Cost **${currSym}${mentionedProduct.cost_price_dollars}** | Sell **${currSym}${mentionedProduct.sell_price_dollars}** (**${marginPct}%** gross margin)`,
+          forecast ? `- **14-Day ML Forecast:** P50 Expected **${Math.round(forecast.p50_qty)}** units | P90 Peak **${Math.round(forecast.p90_qty)}** units (${forecast.model_name})` : `- **14-Day ML Forecast:** Run Pipeline in Demand Planning to compute P50/P90`,
+          b2bMatches.length > 0 ? `- **B2B Network:** Available from **${b2bMatches.length}** verified seller(s) starting at **${currSym}${(Math.min(...b2bMatches.map(m => m.b2b_price_cents)) / 100).toFixed(2)}**/unit` : '',
           '',
           isCritical
-            ? `⚠️ **Restock Alert:** Net available stock (**${mentionedProduct.available}**) is at or below safety stock (**${mentionedProduct.min_safety_stock}**). Replenishment order recommended.`
+            ? `⚠️ **Restock Alert:** Net available stock (**${mentionedProduct.available}**) is at or below safety stock (**${mentionedProduct.min_safety_stock}**). Recommended reorder: **${Math.max(10, suggestedReorderQty)}** units.`
             : `✅ **Healthy Stock:** Stock levels are adequate with **${mentionedProduct.available}** units available.`
-        ].join('\n');
+        ].filter(Boolean).join('\n');
       } else {
         groundedAnswer = [
           `### 🧠 Strategic SKU Analysis: **${mentionedProduct.sku}**`,
@@ -328,20 +469,23 @@ class AssistantService {
           `**Vulnerability & Lead Time Risk:**`,
           `- **Lead Time Exposure:** Replenishment cycle is **${mentionedProduct.lead_days} days**.`,
           `- **Buffer Margin:** Minimum safety stock is set to **${mentionedProduct.min_safety_stock} units**.`,
+          forecast ? `- **ML Forecast:** P50 = **${Math.round(forecast.p50_qty)}** units, P90 Peak = **${Math.round(forecast.p90_qty)}** units.` : '',
           `- **Status:** ${isCritical ? `🚨 **Critical Deficit:** Net available (${mentionedProduct.available}) has breached minimum buffer! Any sudden wholesale order will trigger a backorder stockout.` : `🟢 **Stable:** Inventory safely covers vendor lead-time variability.`}`,
           '',
           `**Recommended Action Plan:**`,
-          `1. ${isCritical ? `Generate and approve a draft PO immediately for at least ${Math.max(10, (mentionedProduct.min_safety_stock * 2) - mentionedProduct.available)} units.` : `Monitor sales velocity; no immediate procurement purchase needed.`}`,
+          `1. ${isCritical ? `Generate and approve a draft PO immediately for at least ${Math.max(10, suggestedReorderQty)} units.` : `Monitor sales velocity; no immediate procurement purchase needed.`}`,
           `2. Check incoming POs (**${mentionedProduct.incoming_po}** inbound) to verify supplier shipment confirmation.`,
-          `3. Unit margin is **${currSym}${(parseFloat(mentionedProduct.sell_price_dollars) - parseFloat(mentionedProduct.cost_price_dollars)).toFixed(2)}** per unit (${(((parseFloat(mentionedProduct.sell_price_dollars) - parseFloat(mentionedProduct.cost_price_dollars)) / parseFloat(mentionedProduct.sell_price_dollars)) * 100).toFixed(1)}% gross margin).`
-        ].join('\n');
+          `3. Unit margin is **${currSym}${(sellVal - costVal).toFixed(2)}** per unit (**${marginPct}%** gross margin).`
+        ].filter(Boolean).join('\n');
       }
 
-      suggestedActions.push(
-        { label: 'View in Catalog', tab: 'inventory' },
-        { label: 'Adjust Stock Count', action: 'openAdjustForSku', sku: mentionedProduct.sku },
-        { label: 'Create Purchase Order', action: 'newPo' }
-      );
+      if (suggestedActions.length === 0) {
+        suggestedActions.push(
+          { label: 'View in Catalog', tab: 'inventory' },
+          { label: 'Adjust Stock Count', action: 'openAdjustForSku', sku: mentionedProduct.sku },
+          { label: 'Create Purchase Order', action: 'newPo' }
+        );
+      }
     }
     // ──────────────────────────────────────────
     // Intent 2: Today's Priorities & Daily Operational Focus
@@ -526,6 +670,90 @@ class AssistantService {
         { label: 'View Cash Flow & Payments', tab: 'payments' },
         { label: 'Update Capital Reserve Policy', tab: 'settings' }
       );
+    }
+    // ──────────────────────────────────────────
+    // Intent 3B: B2B Wholesale Trade Network & Publishing
+    // ──────────────────────────────────────────
+    else if (
+      qLower.includes('b2b') ||
+      qLower.includes('wholesaler') ||
+      qLower.includes('trade network') ||
+      qLower.includes('publish') ||
+      qLower.includes('seller profile') ||
+      qLower.includes('partner')
+    ) {
+      sources.push('B2B Trade Network Directory', 'B2B Order Sync Ledger');
+      const b2b = context.b2bSummary || { wholesalersCount: 0, wholesalers: [], myListedCount: 0, myProfilePublic: false, inboundOrders: [], outboundOrders: [] };
+
+      if (!isReasoning) {
+        groundedAnswer = [
+          `### 🌐 B2B Wholesale Trade Network Status`,
+          `- **Verified Partner Wholesalers Listed:** **${b2b.wholesalersCount}** distributor(s)`,
+          ...(b2b.wholesalers || []).map((w) => `  • **${w.public_name}** (${w.city}) — **${w.listed_count}** active SKUs, ${w.delivery_days}d lead time`),
+          `- **Your Storefront:** ${b2b.myProfilePublic ? '🟢 Publicly Listed' : '⚪ Hidden'} (**${b2b.myListedCount}** of your SKUs published)`,
+          `- **B2B Trade Orders:** **${b2b.inboundOrders.length}** Inbound (as Seller) | **${b2b.outboundOrders.length}** Outbound (as Buyer)`,
+          '',
+          `**How to Publish or Order:**`,
+          `1. Click **⚙️ My B2B Seller Profile** in **🌐 B2B Trade Network** to tick products, set wholesale prices/MOQs, and save.`,
+          `2. Click **Browse Wholesale Catalog & Order** on any partner card to send a synced Purchase-to-Sales order.`
+        ].join('\n');
+      } else {
+        groundedAnswer = [
+          `### 🧠 B2B Network Strategy & Fulfillment Sync`,
+          `- **Network Reach:** **${b2b.wholesalersCount}** verified partner(s) with **${(b2b.networkSkus || []).length}** wholesale SKUs available.`,
+          `- **Your Catalog Exposure:** **${b2b.myListedCount}** SKUs published on the network (your internal cost prices and cash balances remain 100% hidden).`,
+          `- **Two-Way Sync:** Accepting an inbound B2B order automatically reserves stock and generates both a **Confirmed Sales Order** (for you) and a **Confirmed Purchase Order** (for the buyer).`
+        ].join('\n');
+      }
+
+      suggestedActions.push(
+        { label: 'Open B2B Trade Network', tab: 'b2b' },
+        { label: 'My B2B Seller Profile', action: 'openB2bProfile' }
+      );
+    }
+    // ──────────────────────────────────────────
+    // Intent 3C: Step-by-Step How-To (PDF/CSV Import & Order Reversibility)
+    // ──────────────────────────────────────────
+    else if (
+      qLower.includes('import') ||
+      qLower.includes('pdf') ||
+      qLower.includes('csv') ||
+      qLower.includes('upload') ||
+      qLower.includes('unconfirm') ||
+      qLower.includes('revert') ||
+      qLower.includes('reverse') ||
+      qLower.includes('void') ||
+      qLower.includes('undo')
+    ) {
+      sources.push('Operations Workflow Guide');
+      if ((qLower.includes('unconfirm') || qLower.includes('revert') || qLower.includes('reverse') || qLower.includes('void') || qLower.includes('undo')) && (qLower.includes('import') || qLower.includes('pdf') || qLower.includes('csv'))) {
+        groundedAnswer = [
+          `### 📄↩️ PDF/CSV Order Import & Reversing Mistakes`,
+          `**1. Importing Orders (PDF / CSV):**`,
+          `- Open **Purchasing (PO)** or **Sales Orders** and click **📄 Import Order (PDF / CSV)** to upload a quotation/PO, review matched SKUs in the preview modal, and click **Create Draft Order**.`,
+          '',
+          `**2. Reverting Confirmed Orders or Payments:**`,
+          `- Click **Revert to Draft** on any Confirmed order (before receipts/shipments) to unconfirm it, or click **Reverse / Void** on received/paid orders to restore \`on_hand\`, \`reserved\`, \`incoming\`, and cash atomically.`
+        ].join('\n');
+        suggestedActions.push({ label: 'Purchase Orders', tab: 'purchases' }, { label: 'Sales Orders', tab: 'sales' });
+      } else if (qLower.includes('unconfirm') || qLower.includes('revert') || qLower.includes('reverse') || qLower.includes('void') || qLower.includes('undo')) {
+        groundedAnswer = [
+          `### ↩️ How to Revert, Unconfirm, or Void an Order / Payment`,
+          `No button traps you in an irreversible state:`,
+          `1. **Unconfirm a Confirmed Order (No receipts/payments yet):** Click **Revert to Draft** on the order row in **Purchasing (PO)** or **Sales Orders** to return it to an editable Draft and release reserved/incoming stock.`,
+          `2. **Reverse a Partially Received/Paid Order:** Click **Reverse / Void** and enter a reason. An atomic SQLite transaction restores exact \`on_hand\`, \`reserved\`, \`incoming\`, and cash balances.`,
+          `3. **Void a Payment Allocation:** Go to **Payments & Cash Flow** and click **Void** on the payment row to recalculate open invoice balances and available cash.`
+        ].join('\n');
+        suggestedActions.push({ label: 'Purchase Orders', tab: 'purchases' }, { label: 'Payments & Cash Flow', tab: 'payments' });
+      } else {
+        groundedAnswer = [
+          `### 📄 How to Import Purchase or Sales Orders via PDF / CSV`,
+          `1. Go to **Purchasing (PO)** or **Sales Orders** and click **📄 Import Order (PDF / CSV)**.`,
+          `2. Upload a supplier quotation/invoice (\`.pdf\`) or spreadsheet (\`.csv\`) — or download the sample CSV/PDF template right inside the modal.`,
+          `3. Review the **Interactive Preview Table**: auto-matched SKUs appear in green, and any unmatched lines can be mapped via the catalog dropdown before adjusting quantities and clicking **Create Draft Order**.`
+        ].join('\n');
+        suggestedActions.push({ label: 'Purchase Orders', tab: 'purchases' }, { label: 'Sales Orders', tab: 'sales' });
+      }
     }
     // ──────────────────────────────────────────
     // Intent 4: Purchase Orders (POs) & Inbound Pipeline

@@ -296,6 +296,29 @@ test('B2B Wholesale Network & Action Reversibility Verification', async (t) => {
     const sellerSoCancelled = await (await fetch(`${baseUrl}/api/orders/${acceptedData.sellerSoId}`, { headers: { Cookie: sellerCookie } })).json();
     assert.equal(sellerSoCancelled.status, 'CANCELLED');
 
+    // Verify B2B profile GET returns products and POST auto-publish fallback works
+    const profGetRes = await fetch(`${baseUrl}/api/b2b/profile`, { headers: { Cookie: sellerCookie } });
+    assert.equal(profGetRes.status, 200);
+    const profGet = await profGetRes.json();
+    assert.ok(Array.isArray(profGet.products) && profGet.products.length > 0, 'Profile should include products list');
+
+    // Non-demo user (sellerCookie) cannot call /api/auth/demo/reset
+    const nonDemoResetRes = await fetch(`${baseUrl}/api/auth/demo/reset`, {
+      method: 'POST',
+      headers: { Cookie: sellerCookie }
+    });
+    assert.equal(nonDemoResetRes.status, 403);
+
+    // Demo guest (cookieA) reset works cleanly
+    const demoResetRes = await fetch(`${baseUrl}/api/auth/demo/reset`, {
+      method: 'POST',
+      headers: { Cookie: cookieA }
+    });
+    const demoResetText = await demoResetRes.text();
+    assert.equal(demoResetRes.status, 200, `Demo reset failed: ${demoResetText}`);
+    const demoResetData = JSON.parse(demoResetText);
+    assert.equal(demoResetData.success, true);
+
   } finally {
     server.close();
   }

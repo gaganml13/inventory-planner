@@ -130,6 +130,7 @@ const App = (() => {
         if (target === 'insights') loadInsightsOverview();
         if (target === 'b2b') loadB2bData();
         if (target === 'settings') loadSettings();
+        if (window.innerWidth <= 1024) toggleMobileSidebar(false);
         return;
       }
 
@@ -239,6 +240,24 @@ const App = (() => {
       if (userNameEl) userNameEl.textContent = displayName;
       if (userEmailEl) userEmailEl.textContent = displayEmail;
       if (userAvatar) userAvatar.textContent = (displayName[0] || 'G').toUpperCase();
+
+      const isDemoUser = Boolean(data.user?.isGuest || data.user?.email === 'guest@demo' || data.business?.isDemo);
+      const tourBtn = $('demoTourBtn');
+      const resetBtn = $('demoResetBtn');
+      if (tourBtn) tourBtn.classList.toggle('hidden', !isDemoUser);
+      if (tourBtn) tourBtn.classList.toggle('inline-flex', isDemoUser);
+      if (resetBtn) resetBtn.classList.toggle('hidden', !isDemoUser);
+      if (resetBtn) resetBtn.classList.toggle('inline-flex', isDemoUser);
+      document.querySelectorAll('[data-demo-guide]').forEach((el) => {
+        el.classList.toggle('hidden', !isDemoUser);
+      });
+      if (isDemoUser && window.DemoTour && !localStorage.getItem('demo_tour_completed')) {
+        setTimeout(() => {
+          if (window.DemoTour && !localStorage.getItem('demo_tour_completed')) {
+            window.DemoTour.start(0);
+          }
+        }, 650);
+      }
 
       updateOnboardingProgress();
       return true;
@@ -2895,6 +2914,28 @@ const App = (() => {
     if (icon) icon.textContent = isCollapsed ? '»' : '«';
   };
 
+  const toggleMobileSidebar = (force) => {
+    const sidebar = $('appSidebar');
+    const backdrop = $('sidebarBackdrop');
+    if (!sidebar) return;
+    const shouldOpen = typeof force === 'boolean' ? force : !sidebar.classList.contains('mobile-open');
+    sidebar.classList.toggle('mobile-open', shouldOpen);
+    if (backdrop) backdrop.classList.toggle('hidden', !shouldOpen);
+  };
+
+  const resetDemoData = async () => {
+    try {
+      const res = await api('/api/auth/demo/reset', { method: 'POST' });
+      if (res && res.success) {
+        showToast(res.message || 'Demo sandbox reset to fresh state!', 'success');
+        await loadInitialData();
+        if (state.currentTab === 'b2b') loadB2bData();
+      }
+    } catch (err) {
+      showToast(err.message || 'Could not reset demo sandbox', 'error');
+    }
+  };
+
   const exportCsv = (type) => {
     let endpoint = '/api/data/export/catalog';
     if (type === 'orders') endpoint = '/api/data/export/orders';
@@ -2958,6 +2999,29 @@ const App = (() => {
     if (text) text.textContent = isHidden ? 'Expand ▼' : 'Collapse ▲';
   };
 
+  const toggleDemoGuide = (btn) => {
+    const strip = btn?.closest('[data-demo-guide]');
+    const pills = strip?.querySelector('.demo-guide-pills');
+    if (!pills) return;
+    const collapsed = pills.classList.toggle('hidden');
+    btn.textContent = collapsed ? 'Show Flow' : 'Hide';
+  };
+
+  const goToOnboardingStep = (tab, highlightSelector) => {
+    const navBtn = document.querySelector(`#sidebarNav [data-tab="${tab}"]`);
+    if (navBtn) navBtn.click();
+    if (!highlightSelector) return;
+    setTimeout(() => {
+      const target = document.querySelector(highlightSelector);
+      if (!target) return;
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.classList.add('ring-4', 'ring-indigo-400', 'ring-offset-2');
+      setTimeout(() => {
+        target.classList.remove('ring-4', 'ring-indigo-400', 'ring-offset-2');
+      }, 3000);
+    }, 150);
+  };
+
   const updateOnboardingProgress = async () => {
     try {
       const [pos, contacts, purchases, sales] = await Promise.all([
@@ -2979,6 +3043,8 @@ const App = (() => {
 
       const badge = $('onboardingProgressBadge');
       if (badge) badge.textContent = `${completedCount} of 5 Completed (${pct}%)`;
+      const bar = $('onboardingProgressBar');
+      if (bar) bar.style.width = `${pct}%`;
 
       const updateStepUi = (num, done) => {
         const icon = $(`step${num}Icon`);
@@ -2986,7 +3052,7 @@ const App = (() => {
         if (icon) icon.innerHTML = done ? '✓' : String(num);
         if (status) {
           status.textContent = done ? 'Completed' : 'Pending';
-          status.className = `text-[10px] font-semibold ${done ? 'text-emerald-300' : 'text-slate-300'}`;
+          status.className = `text-[10px] font-semibold truncate ${done ? 'text-emerald-600' : 'text-slate-500'}`;
         }
       };
 
@@ -4625,7 +4691,10 @@ const App = (() => {
       return;
     }
 
-    container.innerHTML = dirs.map((d) => `
+    container.innerHTML = dirs.map((d) => {
+      const skuCount = d.listed_products_count ?? d.active_skus ?? 0;
+      const safeName = (d.public_name || '').replace(/'/g, "\\'");
+      return `
       <div class="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between hover:border-indigo-300 transition">
         <div>
           <div class="flex items-start justify-between gap-2 mb-2">
@@ -4642,16 +4711,17 @@ const App = (() => {
           <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-100 my-2">
             <div>Min Order: <strong class="text-slate-800">${formatMoney(d.min_order_cents || 0)}</strong></div>
             <div>Delivery: <strong class="text-slate-800">${d.delivery_days || 3} days</strong></div>
-            <div>Active SKUs: <strong class="text-indigo-700">${d.active_skus || 0} items</strong></div>
+            <div class="col-span-2">Active SKUs: <strong class="text-indigo-700">${skuCount} ${skuCount === 1 ? 'item' : 'items'}</strong></div>
           </div>
         </div>
         <div class="pt-3 border-t border-slate-100 mt-2">
-          <button onclick="App.openB2bCatalogModal(${d.business_id}, '${d.public_name.replace(/'/g, "\\'")}')" class="w-full py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs transition">
-            Browse Wholesale Catalog & Order ➔
+          <button onclick="App.openB2bCatalogModal(${d.business_id}, '${safeName}', ${d.min_order_cents || 0})" class="w-full py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs transition">
+            Browse Wholesale Catalog &amp; Order ➔
           </button>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
   };
 
   const renderB2bMatches = (matches) => {
@@ -4663,31 +4733,42 @@ const App = (() => {
       return;
     }
 
-    container.innerHTML = matches.map((m) => `
+    container.innerHTML = matches.map((m) => {
+      const sellerId = m.seller_business_id || m.seller?.seller_id;
+      const sellerName = m.seller_name || m.seller?.seller_name || 'Verified Wholesaler';
+      const sku = m.my_sku || m.sku;
+      const name = m.my_name || m.product_name;
+      const avail = m.my_available ?? m.my_stock?.on_hand ?? 0;
+      const safety = m.my_min_safety_stock ?? m.my_stock?.lead_days ?? 0;
+      const priceCents = m.b2b_price_cents ?? m.seller?.b2b_price_cents ?? 0;
+      const safeName = sellerName.replace(/'/g, "\\'");
+      return `
       <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 font-bold flex items-center justify-center text-base shrink-0">⚠️</div>
           <div>
-            <div class="flex items-center gap-2">
-              <span class="font-bold text-slate-900 text-xs">${m.sku}</span>
-              <span class="text-xs text-slate-600">${m.product_name}</span>
-              <span class="px-2 py-0.2 rounded text-[10px] font-bold bg-rose-50 text-rose-700">Stockout Risk</span>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-bold text-slate-900 text-xs">${sku}</span>
+              <span class="text-xs text-slate-600">${name}</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700">Stockout Risk</span>
             </div>
-            <p class="text-[11px] text-slate-500 mt-0.5">Your Stock: <strong class="text-rose-600">${m.my_stock.on_hand}</strong> units (${m.my_stock.days_of_cover}d cover, lead ${m.my_stock.lead_days}d). Available from <strong class="text-indigo-700">${m.seller.seller_name}</strong> at ${formatMoney(m.seller.b2b_price_cents)}/unit.</p>
+            <p class="text-[11px] text-slate-500 mt-0.5">${m.headline || `Your Available: <strong class="text-rose-600">${avail}</strong> units (safety min ${safety}). Available from <strong class="text-indigo-700">${sellerName}</strong> at ${formatMoney(priceCents)}/unit.`}</p>
           </div>
         </div>
         <div class="shrink-0 flex items-center gap-2">
-          <button onclick="App.openB2bCatalogModal(${m.seller.seller_id}, '${m.seller.seller_name.replace(/'/g, "\\'")}')" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-2xs transition">
-            Order from ${m.seller.seller_name}
+          <button onclick="App.openB2bCatalogModal(${sellerId}, '${safeName}')" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-2xs transition">
+            Order from ${sellerName}
           </button>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
   };
 
   const renderB2bOrders = (orders) => {
-    const inbound = orders?.inbound || [];
-    const outbound = orders?.outbound || [];
+    const allOrders = Array.isArray(orders) ? orders : [...(orders?.inbound || []), ...(orders?.outbound || [])];
+    const inbound = Array.isArray(orders) ? allOrders.filter(o => o.is_inbound) : (orders?.inbound || []);
+    const outbound = Array.isArray(orders) ? allOrders.filter(o => !o.is_inbound) : (orders?.outbound || []);
 
     if ($('b2bInboundCountBadge')) $('b2bInboundCountBadge').textContent = `${inbound.length} Inbound`;
     if ($('b2bOutboundCountBadge')) $('b2bOutboundCountBadge').textContent = `${outbound.length} Outbound`;
@@ -4698,22 +4779,24 @@ const App = (() => {
         inTbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-400">No inbound orders from other wholesalers yet.</td></tr>';
       } else {
         inTbody.innerHTML = inbound.map((o) => {
-          let badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">${o.status}</span>`;
+          const isPending = o.status === 'PENDING_APPROVAL' || o.status === 'REQUESTED';
+          let badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">${isPending ? 'PENDING APPROVAL' : o.status}</span>`;
           if (o.status === 'ACCEPTED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">ACCEPTED (SO Active)</span>`;
           if (o.status === 'SHIPPED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">SHIPPED</span>`;
           if (o.status === 'COMPLETED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">COMPLETED</span>`;
           if (o.status === 'DECLINED' || o.status === 'CANCELLED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700">VOIDED</span>`;
 
+          const refLabel = o.trade_reference || o.seller_so_number || o.buyer_po_number || `B2B-${o.id}`;
           return `
             <tr class="hover:bg-slate-50">
-              <td class="py-2.5 px-4 font-bold text-slate-900">${o.trade_reference}</td>
+              <td class="py-2.5 px-4 font-bold text-slate-900">${refLabel}</td>
               <td class="py-2.5 px-4 font-semibold text-slate-800">${o.buyer_name}</td>
               <td class="py-2.5 px-4 text-slate-500">${formatDate(o.created_at)}</td>
               <td class="py-2.5 px-4 text-right font-bold text-slate-900">${formatMoney(o.total_cents)}</td>
               <td class="py-2.5 px-4 text-center">${badge}</td>
               <td class="py-2.5 px-4 text-right">
                 <div class="inline-flex items-center gap-1.5 justify-end">
-                  ${o.status === 'REQUESTED' ? `
+                  ${isPending ? `
                     <button onclick="App.acceptB2bTrade(${o.id})" class="px-2.5 py-1 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs transition">Accept</button>
                     <button onclick="App.declineB2bTrade(${o.id})" class="px-2 py-1 rounded text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition">Decline</button>
                   ` : ''}
@@ -4734,22 +4817,24 @@ const App = (() => {
         outTbody.innerHTML = '<tr><td colspan="6" class="py-8 text-center text-slate-400">No outbound replenishment orders placed yet.</td></tr>';
       } else {
         outTbody.innerHTML = outbound.map((o) => {
-          let badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">${o.status}</span>`;
+          const isPending = o.status === 'PENDING_APPROVAL' || o.status === 'REQUESTED';
+          let badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">${isPending ? 'PENDING APPROVAL' : o.status}</span>`;
           if (o.status === 'ACCEPTED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">CONFIRMED (Awaiting Dispatch)</span>`;
           if (o.status === 'SHIPPED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">IN TRANSIT</span>`;
           if (o.status === 'COMPLETED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">RECEIVED</span>`;
           if (o.status === 'DECLINED' || o.status === 'CANCELLED') badge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700">VOIDED</span>`;
 
+          const refLabel = o.trade_reference || o.buyer_po_number || `B2B-${o.id}`;
           return `
             <tr class="hover:bg-slate-50">
-              <td class="py-2.5 px-4 font-bold text-slate-900">${o.trade_reference}</td>
+              <td class="py-2.5 px-4 font-bold text-slate-900">${refLabel}</td>
               <td class="py-2.5 px-4 font-semibold text-slate-800">${o.seller_name}</td>
               <td class="py-2.5 px-4 text-slate-500">${formatDate(o.created_at)}</td>
               <td class="py-2.5 px-4 text-right font-bold text-slate-900">${formatMoney(o.total_cents)}</td>
               <td class="py-2.5 px-4 text-center">${badge}</td>
               <td class="py-2.5 px-4 text-right">
                 <div class="inline-flex items-center gap-1.5 justify-end">
-                  ${['REQUESTED', 'ACCEPTED'].includes(o.status) ? `
+                  ${(isPending || o.status === 'ACCEPTED') ? `
                     <button onclick="App.declineB2bTrade(${o.id})" class="px-2 py-1 rounded text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition">Cancel</button>
                   ` : ''}
                   ${o.status === 'SHIPPED' ? `
@@ -4764,15 +4849,17 @@ const App = (() => {
     }
   };
 
-  const openB2bCatalogModal = async (sellerId, sellerName) => {
+  const openB2bCatalogModal = async (sellerId, sellerName, minOrderCents = 0) => {
     b2bCart = {
       sellerId,
       sellerName,
+      minOrderCents: minOrderCents || 0,
       items: []
     };
 
     if ($('b2bCatalogModalTitle')) $('b2bCatalogModalTitle').textContent = `${sellerName} — Wholesale Catalog`;
     if ($('b2bTradeCartTotal')) $('b2bTradeCartTotal').textContent = '$0.00';
+    if ($('b2bCatalogValidationMsg')) $('b2bCatalogValidationMsg').classList.add('hidden');
 
     const container = $('b2bCatalogListContainer');
     if (container) container.innerHTML = '<div class="py-12 text-center text-slate-400">Loading catalog…</div>';
@@ -4783,31 +4870,38 @@ const App = (() => {
       const catalog = await api(`/api/b2b/catalog?seller_id=${sellerId}`);
       if (!catalog || catalog.length === 0) {
         if (container) container.innerHTML = '<div class="py-12 text-center text-slate-400">This wholesaler has no items listed at the moment.</div>';
+        updateB2bCartTotal();
         return;
       }
 
       b2bCart.catalog = catalog;
-      container.innerHTML = catalog.map((item) => `
-        <div class="bg-slate-50 rounded-xl border border-slate-200 p-4 flex items-center justify-between gap-4">
+      container.innerHTML = catalog.map((item) => {
+        const availStatus = item.availability?.label || item.availability_status || 'In Stock';
+        const isInStock = (item.availability?.status || item.availability_status) === 'IN_STOCK' || availStatus === 'In Stock';
+        const moq = item.b2b_moq || 1;
+        return `
+        <div class="bg-slate-50 rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
               <span class="font-bold text-slate-900 text-xs">${item.sku}</span>
               <span class="text-xs text-slate-700">${item.name}</span>
-              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${item.availability_status === 'In Stock' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
-                ${item.availability_status}
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isInStock ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                ${availStatus}
               </span>
             </div>
-            <p class="text-[11px] text-slate-500 mt-1">Pack Size: ${item.pack_size} | MOQ: ${item.b2b_moq} units | Category: ${item.category || 'General'}</p>
+            <p class="text-[11px] text-slate-500 mt-1">Pack Size: ${item.pack_size || 1} | MOQ: ${moq} units | Category: ${item.category || 'General'}</p>
             <p class="text-sm font-bold text-indigo-700 mt-0.5">${formatMoney(item.b2b_price_cents)} / unit</p>
           </div>
-          <div class="flex items-center gap-2 shrink-0">
-            <label class="text-xs text-slate-500 font-semibold">Qty:</label>
-            <input type="number" id="b2bQty-${item.product_id}" min="${item.b2b_moq || 1}" step="${item.pack_size || 1}" value="${item.b2b_moq || 1}" 
-              onchange="App.updateB2bCartItem(${item.product_id}, this.value)" 
-              class="w-20 border border-slate-300 rounded-lg px-2 py-1.5 text-xs text-right bg-white font-bold" />
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button type="button" onclick="App.adjustB2bQty(${item.product_id}, -${item.pack_size || 1})" class="w-7 h-7 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center">−</button>
+            <input type="number" id="b2bQty-${item.product_id}" min="0" step="${item.pack_size || 1}" value="${moq}"
+              onchange="App.updateB2bCartItem(${item.product_id}, this.value)"
+              class="w-16 border border-slate-300 rounded-lg px-2 py-1 text-xs text-center bg-white font-bold" />
+            <button type="button" onclick="App.adjustB2bQty(${item.product_id}, ${item.pack_size || 1})" class="w-7 h-7 rounded-lg border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs flex items-center justify-center">+</button>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
 
       b2bCart.items = catalog.map(c => ({
         product_id: c.product_id,
@@ -4820,25 +4914,68 @@ const App = (() => {
     }
   };
 
+  const adjustB2bQty = (prodId, delta) => {
+    const input = $(`b2bQty-${prodId}`);
+    if (!input) return;
+    const next = Math.max(0, (parseInt(input.value, 10) || 0) + delta);
+    input.value = next;
+    updateB2bCartItem(prodId, next);
+  };
+
   const updateB2bCartItem = (prodId, val) => {
     const qty = Math.max(0, parseInt(val, 10) || 0);
     const item = (b2bCart.items || []).find(i => i.product_id === prodId);
     if (item) item.quantity = qty;
+    if ($('b2bCatalogValidationMsg')) $('b2bCatalogValidationMsg').classList.add('hidden');
     updateB2bCartTotal();
   };
 
   const updateB2bCartTotal = () => {
     let totalCents = 0;
+    let activeCount = 0;
     (b2bCart.items || []).forEach(i => {
+      if ((i.quantity || 0) > 0) activeCount++;
       totalCents += (i.quantity || 0) * (i.unit_price_cents || 0);
     });
     if ($('b2bTradeCartTotal')) $('b2bTradeCartTotal').textContent = formatMoney(totalCents);
+
+    const sendBtn = $('b2bSendOrderBtn');
+    if (sendBtn) sendBtn.disabled = activeCount === 0;
+
+    const minCents = b2bCart.minOrderCents || 0;
+    const progressWrap = $('b2bMinOrderProgressWrap');
+    const progressBar = $('b2bMinOrderProgressBar');
+    const statusText = $('b2bMinOrderStatusText');
+    if (progressWrap && progressBar && statusText) {
+      if (minCents > 0) {
+        progressWrap.classList.remove('hidden');
+        const pct = Math.min(100, Math.round((totalCents / minCents) * 100));
+        progressBar.style.width = `${pct}%`;
+        if (totalCents >= minCents) {
+          progressBar.className = 'h-full bg-emerald-500 transition-all duration-200';
+          statusText.textContent = `✓ Meets ${formatMoney(minCents)} min order`;
+          statusText.className = 'text-[11px] font-semibold text-emerald-700';
+        } else {
+          progressBar.className = 'h-full bg-amber-500 transition-all duration-200';
+          statusText.textContent = `Add ${formatMoney(minCents - totalCents)} more for ${formatMoney(minCents)} min`;
+          statusText.className = 'text-[11px] font-semibold text-amber-700';
+        }
+      } else {
+        progressWrap.classList.add('hidden');
+        statusText.textContent = '';
+      }
+    }
   };
 
   const submitB2bTradeOrder = async () => {
     const activeItems = (b2bCart.items || []).filter(i => i.quantity > 0);
+    const valMsg = $('b2bCatalogValidationMsg');
     if (activeItems.length === 0) {
-      alert('Please enter a quantity greater than zero for at least one item.');
+      if (valMsg) {
+        valMsg.textContent = 'Please set a quantity greater than 0 for at least one wholesale item before sending.';
+        valMsg.classList.remove('hidden');
+      }
+      showToast('Select at least one product quantity > 0', 'error');
       return;
     }
 
@@ -4853,12 +4990,16 @@ const App = (() => {
       });
 
       if (res && res.success) {
-        showToast(`B2B Order ${res.tradeReference} created and submitted to ${b2bCart.sellerName}`, 'success');
+        showToast(`B2B Order ${res.tradeReference || res.order_id || ''} created and submitted to ${b2bCart.sellerName}`, 'success');
         closeModal('b2bCatalogModal');
         loadB2bData();
         loadPurchaseOrders();
       }
     } catch (err) {
+      if (valMsg) {
+        valMsg.textContent = err.message || 'Could not place B2B trade order';
+        valMsg.classList.remove('hidden');
+      }
       showToast(err.message || 'Could not place B2B trade order', 'error');
     }
   };
@@ -4936,6 +5077,40 @@ const App = (() => {
         if ($('b2bProfileRegNo')) $('b2bProfileRegNo').value = prof.gst_or_reg_no || '';
         if ($('b2bProfileDescription')) $('b2bProfileDescription').value = prof.description || '';
         if ($('b2bProfileIsPublic')) $('b2bProfileIsPublic').checked = prof.is_public === 1;
+
+        const tbody = $('b2bProfileProductsBody');
+        if (tbody) {
+          const products = prof.products || [];
+          if (products.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="py-6 text-center text-slate-400">No active products found in your catalog yet.</td></tr>';
+          } else {
+            tbody.innerHTML = products.map((p) => {
+              const defaultPrice = ((p.b2b_price_cents || p.sell_price_cents || 0) / 100).toFixed(2);
+              const moq = p.b2b_moq || p.pack_size || 1;
+              return `
+                <tr class="hover:bg-slate-50" data-b2b-prod-row="${p.id}">
+                  <td class="py-2 px-3">
+                    <input type="checkbox" class="b2b-prod-check rounded text-indigo-600" data-prod-id="${p.id}" ${p.is_b2b_listed ? 'checked' : ''} />
+                  </td>
+                  <td class="py-2 px-3">
+                    <div class="font-bold text-slate-900">${p.sku}</div>
+                    <div class="text-[11px] text-slate-500">${p.name}</div>
+                  </td>
+                  <td class="py-2 px-3 text-right font-semibold text-slate-700">${p.on_hand ?? 0}</td>
+                  <td class="py-2 px-3 text-right">
+                    <input type="number" min="0" step="0.01" value="${defaultPrice}" class="b2b-prod-price w-20 border border-slate-300 rounded px-2 py-1 text-right text-xs" />
+                  </td>
+                  <td class="py-2 px-3 text-right">
+                    <input type="number" min="1" step="1" value="${moq}" class="b2b-prod-moq w-16 border border-slate-300 rounded px-2 py-1 text-right text-xs" />
+                  </td>
+                  <td class="py-2 px-3 text-center">
+                    <input type="checkbox" class="b2b-prod-clearance rounded text-amber-600" title="Flag as Overstock / Clearance Deal" />
+                  </td>
+                </tr>
+              `;
+            }).join('');
+          }
+        }
       }
     } catch (err) {
       console.error('Error fetching B2B profile:', err);
@@ -4943,9 +5118,29 @@ const App = (() => {
     openModal('b2bProfileModal');
   };
 
+  const selectAllB2bProducts = () => {
+    document.querySelectorAll('#b2bProfileProductsBody .b2b-prod-check').forEach((cb) => {
+      cb.checked = true;
+    });
+  };
+
   const saveB2bProfile = async (e) => {
     e.preventDefault();
     try {
+      const products = [];
+      document.querySelectorAll('#b2bProfileProductsBody tr[data-b2b-prod-row]').forEach((row) => {
+        const id = parseInt(row.getAttribute('data-b2b-prod-row'), 10);
+        const isListed = row.querySelector('.b2b-prod-check')?.checked ? 1 : 0;
+        const priceDollars = parseFloat(row.querySelector('.b2b-prod-price')?.value) || 0;
+        const moq = parseInt(row.querySelector('.b2b-prod-moq')?.value, 10) || 1;
+        products.push({
+          id,
+          is_b2b_listed: isListed,
+          b2b_price_cents: Math.round(priceDollars * 100),
+          b2b_moq: Math.max(1, moq)
+        });
+      });
+
       const payload = {
         public_name: $('b2bProfilePublicName')?.value,
         category: $('b2bProfileCategory')?.value,
@@ -4954,7 +5149,8 @@ const App = (() => {
         delivery_days: parseInt($('b2bProfileLeadDays')?.value, 10) || 3,
         gst_or_reg_no: $('b2bProfileRegNo')?.value,
         description: $('b2bProfileDescription')?.value,
-        is_public: $('b2bProfileIsPublic')?.checked ? 1 : 0
+        is_public: $('b2bProfileIsPublic')?.checked ? 1 : 0,
+        products
       };
 
       const res = await api('/api/b2b/profile', {
@@ -4963,7 +5159,7 @@ const App = (() => {
       });
 
       if (res && res.success) {
-        showToast('B2B wholesale profile updated', 'success');
+        showToast(res.message || `B2B wholesale profile updated (${res.listedCount ?? 0} SKUs published)`, 'success');
         closeModal('b2bProfileModal');
         loadB2bData();
       }
@@ -5066,6 +5262,8 @@ const App = (() => {
     openAddTeamModal,
     submitAddTeam,
     toggleSidebar,
+    toggleMobileSidebar,
+    resetDemoData,
     exportCsv,
     filterCatalog,
     unarchiveProduct,
@@ -5073,6 +5271,8 @@ const App = (() => {
     saveProfile,
     toggleUserStatus,
     toggleOnboardingBanner,
+    toggleDemoGuide,
+    goToOnboardingStep,
     updateOnboardingProgress,
     switchTab: (t) => {
       const btn = document.querySelector(`#sidebarNav [data-tab="${t}"]`);
@@ -5106,6 +5306,7 @@ const App = (() => {
     switchB2bTab,
     loadB2bData,
     openB2bCatalogModal,
+    adjustB2bQty,
     updateB2bCartItem,
     submitB2bTradeOrder,
     acceptB2bTrade,
@@ -5113,6 +5314,7 @@ const App = (() => {
     shipB2bTrade,
     receiveB2bTrade,
     openB2bProfileModal,
+    selectAllB2bProducts,
     saveB2bProfile
   };
 })();

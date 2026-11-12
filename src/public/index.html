@@ -123,9 +123,28 @@
     #appSidebar.collapsed .sidebar-logout-btn {
       display: none !important;
     }
+    @media (max-width: 1024px) {
+      #appSidebar {
+        position: fixed;
+        inset-y: 0;
+        left: 0;
+        z-index: 40;
+        transform: translateX(-100%);
+        width: 16rem !important;
+      }
+      #appSidebar.mobile-open {
+        transform: translateX(0);
+      }
+      #sidebarToggleBtn {
+        display: none !important;
+      }
+    }
   </style>
 </head>
 <body class="h-full flex overflow-hidden bg-slate-50 text-slate-800">
+
+  <!-- Mobile Sidebar Backdrop -->
+  <div id="sidebarBackdrop" class="fixed inset-0 bg-slate-900/40 z-30 hidden lg:hidden backdrop-blur-[1px]" onclick="App.toggleMobileSidebar(false)"></div>
 
   <!-- ==========================================
        LEFT SIDEBAR NAVIGATION (Zoho / StockTrim Layout)
@@ -140,7 +159,7 @@
           </svg>
         </div>
         <div class="min-w-0 flex-1 sidebar-text">
-          <h1 class="text-sm font-bold text-slate-900 truncate" id="sidebarBizName">Smart Business Analyzer</h1>
+          <h1 class="text-xs font-bold text-slate-900 leading-tight break-words" id="sidebarBizName">Smart Business Analyzer</h1>
           <div class="flex items-center gap-1.5 mt-0.5">
             <span id="tenantModeBadge" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
               Demo Guest
@@ -249,9 +268,15 @@
   <div class="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
 
     <!-- Top Header Bar (Quick Action + Global Search + Capital Indicator) -->
-    <header class="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between gap-4 shrink-0 shadow-xs z-10">
-      <!-- Global SKU Search Bar -->
-      <div class="flex items-center gap-2 flex-1 max-w-md">
+    <header class="min-h-[3.5rem] bg-white border-b border-slate-200 px-3 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2 sm:gap-4 shrink-0 shadow-xs z-10">
+      <!-- Mobile Hamburger + Global SKU Search Bar -->
+      <div class="flex items-center gap-2 flex-1 min-w-[180px] max-w-md">
+        <button id="mobileMenuBtn" onclick="App.toggleMobileSidebar()" aria-label="Toggle Menu"
+          class="lg:hidden p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 border border-slate-200 transition shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </button>
         <div class="relative w-full">
           <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -264,7 +289,20 @@
       </div>
 
       <!-- Right Header Group -->
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <!-- Demo Mode Controls (Interactive Tour + Reset Demo Data) -->
+        <button id="demoTourBtn" onclick="window.DemoTour && DemoTour.start(0)"
+          class="hidden items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition">
+          <span>🎓</span>
+          <span class="hidden sm:inline">Start Interactive Tour</span>
+          <span class="sm:hidden">Tour</span>
+        </button>
+        <button id="demoResetBtn" onclick="App.resetDemoData()"
+          class="hidden items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition">
+          <span>🔄</span>
+          <span class="hidden md:inline">Reset Demo Data</span>
+        </button>
+
         <!-- Working Capital Indicator Pill -->
         <div class="hidden md:flex items-center gap-2 px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs">
           <div class="flex items-center gap-1.5">
@@ -327,98 +365,81 @@
     </header>
 
     <!-- Main Workspace Scroll Area -->
-    <main class="flex-1 overflow-y-auto p-6 space-y-6">
+    <main class="flex-1 overflow-y-auto p-3 sm:p-6 pb-24 space-y-6">
 
       <!-- ==========================================
            VIEW 1: OVERVIEW & REPLENISHMENT DASHBOARD (StockTrim Style)
       =========================================== -->
       <div id="view-overview" class="view-panel space-y-6">
 
-        <!-- Guided Onboarding Checklist Banner (Collapsible with real completion progress) -->
-        <div id="onboardingBanner" class="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white rounded-xl p-5 shadow-xs border border-indigo-800">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-              <div>
-                <div class="flex items-center gap-2">
-                  <h3 class="text-sm font-bold tracking-tight">First-Run Guided Setup Checklist</h3>
-                  <span id="onboardingProgressBadge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
-                    0 of 5 Completed (0%)
-                  </span>
-                </div>
-                <p class="text-xs text-slate-300 mt-0.5">Complete these core steps to initialize inventory, financial boundaries, and demand planning.</p>
+        <!-- Compact Light-Mode Guided Setup Checklist -->
+        <div id="onboardingBanner" class="bg-white rounded-xl px-4 py-3 shadow-xs border border-indigo-200/80">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5 flex-1 min-w-[200px]">
+              <span class="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></span>
+              <h3 class="text-xs sm:text-sm font-bold text-slate-900 tracking-tight">Setup Checklist</h3>
+              <span id="onboardingProgressBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                0 of 5 Completed (0%)
+              </span>
+              <div class="hidden sm:block flex-1 max-w-[140px] h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div id="onboardingProgressBar" class="h-full bg-indigo-600 transition-all duration-300" style="width: 0%;"></div>
               </div>
             </div>
-            <button onclick="App.toggleOnboardingBanner()" class="text-xs text-slate-400 hover:text-white px-2 py-1 rounded bg-white/5 hover:bg-white/10 transition" id="onboardingToggleText">
+            <button onclick="App.toggleOnboardingBanner()" class="text-[11px] font-semibold text-slate-500 hover:text-slate-800 px-2 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 transition" id="onboardingToggleText">
               Collapse ▲
             </button>
           </div>
 
-          <div id="onboardingStepsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mt-4">
-            <!-- Step 1: Settings -->
-            <button onclick="App.switchTab('settings')" class="flex flex-col justify-between p-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-left transition group">
-              <div class="flex items-center justify-between mb-2">
-                <span class="w-6 h-6 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-xs" id="step1Icon">1</span>
-                <span class="text-[10px] text-slate-300 font-medium" id="step1Status">Pending</span>
-              </div>
-              <div>
-                <p class="text-xs font-semibold text-white group-hover:text-indigo-200">1. Business Settings</p>
-                <p class="text-[10px] text-slate-300 mt-0.5">Cash, currency & lead times</p>
+          <div id="onboardingStepsGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mt-2.5">
+            <!-- Step 1: Business Settings -->
+            <button onclick="App.goToOnboardingStep('settings', '#settingsForm button[type=submit]')" class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-indigo-50/70 border border-slate-200 hover:border-indigo-300 text-left transition group">
+              <span class="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0" id="step1Icon">1</span>
+              <div class="min-w-0 flex-1">
+                <p class="text-[11px] font-semibold text-slate-800 truncate group-hover:text-indigo-700">1. Business Settings</p>
+                <p class="text-[10px] text-slate-500 truncate" id="step1Status">Pending</p>
               </div>
             </button>
 
             <!-- Step 2: Contacts -->
-            <button onclick="App.openContactsModal()" class="flex flex-col justify-between p-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-left transition group">
-              <div class="flex items-center justify-between mb-2">
-                <span class="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center font-bold text-xs" id="step2Icon">2</span>
-                <span class="text-[10px] text-slate-300 font-medium" id="step2Status">Pending</span>
-              </div>
-              <div>
-                <p class="text-xs font-semibold text-white group-hover:text-blue-200">2. Add Contacts</p>
-                <p class="text-[10px] text-slate-300 mt-0.5">Suppliers & customers</p>
+            <button onclick="App.goToOnboardingStep('inventory', '#view-inventory button[onclick*=openContactsModal]')" class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-indigo-50/70 border border-slate-200 hover:border-indigo-300 text-left transition group">
+              <span class="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0" id="step2Icon">2</span>
+              <div class="min-w-0 flex-1">
+                <p class="text-[11px] font-semibold text-slate-800 truncate group-hover:text-indigo-700">2. Contacts</p>
+                <p class="text-[10px] text-slate-500 truncate" id="step2Status">Pending</p>
               </div>
             </button>
 
-            <!-- Step 3: Products -->
-            <button onclick="App.openNewProductModal()" class="flex flex-col justify-between p-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-left transition group">
-              <div class="flex items-center justify-between mb-2">
-                <span class="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center font-bold text-xs" id="step3Icon">3</span>
-                <span class="text-[10px] text-slate-300 font-medium" id="step3Status">Pending</span>
-              </div>
-              <div>
-                <p class="text-xs font-semibold text-white group-hover:text-emerald-200">3. Products & Stock</p>
-                <p class="text-[10px] text-slate-300 mt-0.5">SKUs & initial balances</p>
+            <!-- Step 3: Catalog & Stock -->
+            <button onclick="App.goToOnboardingStep('inventory', '#view-inventory button[onclick*=openNewProductModal]')" class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-indigo-50/70 border border-slate-200 hover:border-indigo-300 text-left transition group">
+              <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0" id="step3Icon">3</span>
+              <div class="min-w-0 flex-1">
+                <p class="text-[11px] font-semibold text-slate-800 truncate group-hover:text-indigo-700">3. Catalog &amp; Stock</p>
+                <p class="text-[10px] text-slate-500 truncate" id="step3Status">Pending</p>
               </div>
             </button>
 
-            <!-- Step 4: Purchase Order -->
-            <button onclick="App.openOrderModal('PURCHASE')" class="flex flex-col justify-between p-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-left transition group">
-              <div class="flex items-center justify-between mb-2">
-                <span class="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center font-bold text-xs" id="step4Icon">4</span>
-                <span class="text-[10px] text-slate-300 font-medium" id="step4Status">Pending</span>
-              </div>
-              <div>
-                <p class="text-xs font-semibold text-white group-hover:text-amber-200">4. First Purchase</p>
-                <p class="text-[10px] text-slate-300 mt-0.5">Procure replenishment stock</p>
+            <!-- Step 4: First Purchase -->
+            <button onclick="App.goToOnboardingStep('purchases', '#view-purchases button[onclick*=PURCHASE]')" class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-indigo-50/70 border border-slate-200 hover:border-indigo-300 text-left transition group">
+              <span class="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-[10px] shrink-0" id="step4Icon">4</span>
+              <div class="min-w-0 flex-1">
+                <p class="text-[11px] font-semibold text-slate-800 truncate group-hover:text-indigo-700">4. First Purchase</p>
+                <p class="text-[10px] text-slate-500 truncate" id="step4Status">Pending</p>
               </div>
             </button>
 
-            <!-- Step 5: Sales Order -->
-            <button onclick="App.openOrderModal('SALE')" class="flex flex-col justify-between p-3 rounded-lg bg-white/10 hover:bg-white/15 border border-white/10 text-left transition group">
-              <div class="flex items-center justify-between mb-2">
-                <span class="w-6 h-6 rounded-full bg-purple-500 flex items-center justify-center font-bold text-xs" id="step5Icon">5</span>
-                <span class="text-[10px] text-slate-300 font-medium" id="step5Status">Pending</span>
-              </div>
-              <div>
-                <p class="text-xs font-semibold text-white group-hover:text-purple-200">5. First Sale</p>
-                <p class="text-[10px] text-slate-300 mt-0.5">Reserve & fulfill orders</p>
+            <!-- Step 5: First Sale -->
+            <button onclick="App.goToOnboardingStep('sales', '#view-sales button[onclick*=SALE]')" class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 hover:bg-indigo-50/70 border border-slate-200 hover:border-indigo-300 text-left transition group col-span-2 sm:col-span-1">
+              <span class="w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0" id="step5Icon">5</span>
+              <div class="min-w-0 flex-1">
+                <p class="text-[11px] font-semibold text-slate-800 truncate group-hover:text-indigo-700">5. First Sale</p>
+                <p class="text-[10px] text-slate-500 truncate" id="step5Status">Pending</p>
               </div>
             </button>
           </div>
         </div>
 
         <!-- 1. Capital & Health Strip (4 Executive Indicators) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div id="overviewKpiStrip" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <!-- Metric 1: Purchasing Budget -->
           <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
             <div class="flex items-center justify-between text-[11px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5">
@@ -542,6 +563,16 @@
            VIEW 2: CATALOG & INVENTORY (Full CRUD)
       =========================================== -->
       <div id="view-inventory" class="view-panel hidden space-y-6">
+        <div data-demo-guide class="hidden px-3 py-2 rounded-lg bg-indigo-50/90 border border-indigo-200 text-[11px] text-indigo-900 flex flex-wrap items-center justify-between gap-2">
+          <div class="demo-guide-pills flex flex-wrap items-center gap-1.5">
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">① Add or Import SKUs</span>
+            <span class="text-indigo-400">➔</span>
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">② Run Physical Audit / Adjust</span>
+            <span class="text-indigo-400">➔</span>
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">③ Track Available vs Incoming</span>
+          </div>
+          <button type="button" onclick="App.toggleDemoGuide(this)" class="text-[10px] font-semibold text-indigo-600 hover:text-indigo-900 underline shrink-0">Hide</button>
+        </div>
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h2 class="text-base font-bold text-slate-900">Inventory Positions & Ledgers</h2>
@@ -569,7 +600,7 @@
         </div>
 
         <!-- Inventory Filter Tabs -->
-        <div class="flex items-center gap-2 border-b border-slate-200 pb-2">
+        <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
           <button onclick="App.filterCatalog('all')" id="catFilter-all" class="px-3 py-1 rounded-md text-xs font-semibold bg-indigo-600 text-white shadow-2xs">All Items</button>
           <button onclick="App.filterCatalog('active')" id="catFilter-active" class="px-3 py-1 rounded-md text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Active Stock</button>
           <button onclick="App.filterCatalog('low')" id="catFilter-low" class="px-3 py-1 rounded-md text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Low Stock Alert</button>
@@ -577,7 +608,7 @@
           <button onclick="App.filterCatalog('archived')" id="catFilter-archived" class="px-3 py-1 rounded-md text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100">Archived</button>
         </div>
 
-        <section class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+        <section id="inventoryTableCard" class="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
           <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse text-xs">
               <thead>
@@ -638,6 +669,16 @@
            VIEW 3: PURCHASING (PO)
       =========================================== -->
       <div id="view-purchases" class="view-panel hidden space-y-6">
+        <div data-demo-guide class="hidden px-3 py-2 rounded-lg bg-indigo-50/90 border border-indigo-200 text-[11px] text-indigo-900 flex flex-wrap items-center justify-between gap-2">
+          <div class="demo-guide-pills flex flex-wrap items-center gap-1.5">
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">① Create or Import Draft PO (No cash locked)</span>
+            <span class="text-indigo-400">➔</span>
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">② Click Confirm (Marks stock Incoming)</span>
+            <span class="text-indigo-400">➔</span>
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">③ Click Receive when goods arrive (Adds On-Hand)</span>
+          </div>
+          <button type="button" onclick="App.toggleDemoGuide(this)" class="text-[10px] font-semibold text-indigo-600 hover:text-indigo-900 underline shrink-0">Hide</button>
+        </div>
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h2 class="text-base font-bold text-slate-900">Purchase Orders (Inbound Restock)</h2>
@@ -709,6 +750,16 @@
            VIEW 4: SALES ORDERS
       =========================================== -->
       <div id="view-sales" class="view-panel hidden space-y-6">
+        <div data-demo-guide class="hidden px-3 py-2 rounded-lg bg-indigo-50/90 border border-indigo-200 text-[11px] text-indigo-900 flex flex-wrap items-center justify-between gap-2">
+          <div class="demo-guide-pills flex flex-wrap items-center gap-1.5">
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">① Create or Import Draft SO</span>
+            <span class="text-indigo-400">➔</span>
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">② Confirm Order (Reserves stock)</span>
+            <span class="text-indigo-400">➔</span>
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">③ Ship Goods &amp; Collect Payment</span>
+          </div>
+          <button type="button" onclick="App.toggleDemoGuide(this)" class="text-[10px] font-semibold text-indigo-600 hover:text-indigo-900 underline shrink-0">Hide</button>
+        </div>
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h2 class="text-base font-bold text-slate-900">Sales Orders (Customer Demand)</h2>
@@ -780,6 +831,16 @@
            VIEW 5: PAYMENTS & CASH FLOW
       =========================================== -->
       <div id="view-payments" class="view-panel hidden space-y-6">
+        <div data-demo-guide class="hidden px-3 py-2 rounded-lg bg-indigo-50/90 border border-indigo-200 text-[11px] text-indigo-900 flex flex-wrap items-center justify-between gap-2">
+          <div class="demo-guide-pills flex flex-wrap items-center gap-1.5">
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">① Review Open Invoices (AR &amp; AP)</span>
+            <span class="text-indigo-400">➔</span>
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">② Record Collection or Payout</span>
+            <span class="text-indigo-400">➔</span>
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">③ Watch Free Capital &amp; Budget Update</span>
+          </div>
+          <button type="button" onclick="App.toggleDemoGuide(this)" class="text-[10px] font-semibold text-indigo-600 hover:text-indigo-900 underline shrink-0">Hide</button>
+        </div>
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h2 class="text-base font-bold text-slate-900">Payments & Working Capital Ledger</h2>
@@ -853,6 +914,16 @@
            VIEW 6: DEMAND PLANNING & INTELLIGENCE
       =========================================== -->
       <div id="view-insights" class="view-panel hidden space-y-6">
+        <div data-demo-guide class="hidden px-3 py-2 rounded-lg bg-indigo-50/90 border border-indigo-200 text-[11px] text-indigo-900 flex flex-wrap items-center justify-between gap-2">
+          <div class="demo-guide-pills flex flex-wrap items-center gap-1.5">
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">① Click Run Pipeline (Trains Python ML)</span>
+            <span class="text-indigo-400">➔</span>
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">② Compare Expected (P50) vs Peak (P90)</span>
+            <span class="text-indigo-400">➔</span>
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">③ Click Inspect for SKU Math &amp; Charts</span>
+          </div>
+          <button type="button" onclick="App.toggleDemoGuide(this)" class="text-[10px] font-semibold text-indigo-600 hover:text-indigo-900 underline shrink-0">Hide</button>
+        </div>
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h2 class="text-base font-bold text-slate-900">Demand Planning & Intelligence</h2>
@@ -972,6 +1043,16 @@
            VIEW 8: B2B TRADE NETWORK
       =========================================== -->
       <div id="view-b2b" class="view-panel hidden space-y-6">
+        <div data-demo-guide class="hidden px-3 py-2 rounded-lg bg-indigo-50/90 border border-indigo-200 text-[11px] text-indigo-900 flex flex-wrap items-center justify-between gap-2">
+          <div class="demo-guide-pills flex flex-wrap items-center gap-1.5">
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">① Open 'My B2B Seller Profile' to list items</span>
+            <span class="text-indigo-400">➔</span>
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">② Browse Verified Wholesalers or Smart Matches</span>
+            <span class="text-indigo-400">➔</span>
+            <span class="px-2 py-0.5 rounded-full bg-white border border-indigo-200 font-semibold">③ Send Trade Request (Auto-syncs Buyer PO &amp; Seller SO)</span>
+          </div>
+          <button type="button" onclick="App.toggleDemoGuide(this)" class="text-[10px] font-semibold text-indigo-600 hover:text-indigo-900 underline shrink-0">Hide</button>
+        </div>
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <div class="flex items-center gap-2">
@@ -988,7 +1069,7 @@
         </div>
 
         <!-- 3 B2B Network Tabs -->
-        <div class="flex items-center gap-2 border-b border-slate-200 pb-2">
+        <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
           <button id="b2bTabWholesalersBtn" onclick="App.switchB2bTab('wholesalers')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-2xs transition">
             🏢 1. Verified Wholesalers
           </button>
@@ -1036,12 +1117,12 @@
               <table class="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
-                    <th class="py-3 px-4">Trade Ref</th>
-                    <th class="py-3 px-4">Buyer Company</th>
-                    <th class="py-3 px-4">Requested On</th>
-                    <th class="py-3 px-4 text-right">Total ($)</th>
-                    <th class="py-3 px-4 text-center">Trade Status</th>
-                    <th class="py-3 px-4 text-right">Actions</th>
+                    <th class="py-3 px-4 whitespace-nowrap">Trade Ref</th>
+                    <th class="py-3 px-4 whitespace-nowrap">Buyer Company</th>
+                    <th class="py-3 px-4 whitespace-nowrap">Requested On</th>
+                    <th class="py-3 px-4 text-right whitespace-nowrap">Total ($)</th>
+                    <th class="py-3 px-4 text-center whitespace-nowrap">Trade Status</th>
+                    <th class="py-3 px-4 text-right whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="b2bInboundOrdersTableBody" class="divide-y divide-slate-100">
@@ -1064,12 +1145,12 @@
               <table class="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr class="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[11px]">
-                    <th class="py-3 px-4">Trade Ref</th>
-                    <th class="py-3 px-4">Seller Wholesaler</th>
-                    <th class="py-3 px-4">Sent On</th>
-                    <th class="py-3 px-4 text-right">Total ($)</th>
-                    <th class="py-3 px-4 text-center">Trade Status</th>
-                    <th class="py-3 px-4 text-right">Actions</th>
+                    <th class="py-3 px-4 whitespace-nowrap">Trade Ref</th>
+                    <th class="py-3 px-4 whitespace-nowrap">Seller Wholesaler</th>
+                    <th class="py-3 px-4 whitespace-nowrap">Sent On</th>
+                    <th class="py-3 px-4 text-right whitespace-nowrap">Total ($)</th>
+                    <th class="py-3 px-4 text-center whitespace-nowrap">Trade Status</th>
+                    <th class="py-3 px-4 text-right whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="b2bOutboundOrdersTableBody" class="divide-y divide-slate-100">
@@ -2147,20 +2228,38 @@
         <button onclick="App.closeModal('b2bCatalogModal')" class="text-slate-400 hover:text-white">&times;</button>
       </div>
 
-      <div class="p-6 overflow-y-auto space-y-4 flex-1">
+      <!-- Security & Isolation Banner -->
+      <div class="px-6 py-2 bg-emerald-50 border-b border-emerald-200 text-[11px] font-medium text-emerald-900 flex flex-wrap items-center gap-x-3 gap-y-1 shrink-0">
+        <span>🛡️ Verified GST/Tax Partner</span>
+        <span class="text-emerald-300">&bull;</span>
+        <span>🔒 Cost Prices &amp; Internal Ledgers Hidden</span>
+        <span class="text-emerald-300">&bull;</span>
+        <span>⚡ Two-Way PO-to-SO Sync</span>
+      </div>
+
+      <div class="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+        <div id="b2bCatalogValidationMsg" class="hidden px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-xs font-medium text-rose-800"></div>
         <div id="b2bCatalogListContainer" class="space-y-3">
           <!-- Populated by JS -->
         </div>
       </div>
 
-      <div class="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
-        <div>
-          <span class="text-xs text-slate-500">Order Commitment:</span>
-          <span id="b2bTradeCartTotal" class="text-sm font-bold text-slate-900 ml-1">$0.00</span>
+      <div class="px-4 sm:px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <span class="text-xs text-slate-500">Order Subtotal:</span>
+              <span id="b2bTradeCartTotal" class="text-sm font-bold text-slate-900 ml-1">$0.00</span>
+            </div>
+            <span id="b2bMinOrderStatusText" class="text-[11px] font-semibold text-slate-500"></span>
+          </div>
+          <div id="b2bMinOrderProgressWrap" class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1.5 hidden">
+            <div id="b2bMinOrderProgressBar" class="h-full bg-indigo-600 transition-all duration-200" style="width: 0%;"></div>
+          </div>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 shrink-0 justify-end">
           <button type="button" onclick="App.closeModal('b2bCatalogModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100">Close</button>
-          <button type="button" id="b2bSendOrderBtn" onclick="App.submitB2bTradeOrder()" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition">
+          <button type="button" id="b2bSendOrderBtn" disabled onclick="App.submitB2bTradeOrder()" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition">
             Send B2B Trade Request
           </button>
         </div>
@@ -2170,31 +2269,35 @@
 
   <!-- Modal 17: B2B Seller Profile & Trade Settings -->
   <div id="b2bProfileModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 modal-backdrop" onclick="App.closeBdClick(event, 'b2bProfileModal')">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onclick="event.stopPropagation()">
-      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+      <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-900 text-white shrink-0">
         <div>
-          <h3 class="text-sm font-bold tracking-tight">⚙️ B2B Wholesale Seller Profile</h3>
-          <p class="text-[11px] text-slate-300">Manage your business profile on the B2B Trade Network</p>
+          <h3 class="text-sm font-bold tracking-tight">⚙️ B2B Wholesale Seller Profile &amp; Catalog Publishing</h3>
+          <p class="text-[11px] text-slate-300">Configure your public wholesaler profile and choose which products to list on the B2B Trade Network</p>
         </div>
         <button onclick="App.closeModal('b2bProfileModal')" class="text-slate-400 hover:text-white">&times;</button>
       </div>
 
-      <form id="b2bProfileForm" onsubmit="App.saveB2bProfile(event)" class="p-6 space-y-3.5 text-xs">
-        <div>
-          <label class="block font-semibold text-slate-700 mb-1">Public Wholesaler Name *</label>
-          <input id="b2bProfilePublicName" required placeholder="e.g. Apex Wholesale Distro" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs" />
+      <form id="b2bProfileForm" onsubmit="App.saveB2bProfile(event)" class="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs flex-1">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Public Wholesaler Name *</label>
+            <input id="b2bProfilePublicName" required placeholder="e.g. Apex Wholesale Distro" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs" />
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Tax / Business Registration No.</label>
+            <input id="b2bProfileRegNo" placeholder="Optional business registration ID" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs" />
+          </div>
         </div>
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Industry Category</label>
             <input id="b2bProfileCategory" placeholder="e.g. Office & Industrial Supplies" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs" />
           </div>
           <div>
-            <label class="block font-semibold text-slate-700 mb-1">City / Logistics Center</label>
+            <label class="block font-semibold text-slate-700 mb-1">City / Logistics Hub</label>
             <input id="b2bProfileCity" placeholder="e.g. Seattle, WA Hub" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs" />
           </div>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block font-semibold text-slate-700 mb-1">Min Order Value ($)</label>
             <input id="b2bProfileMinOrder" type="number" min="0" step="10" placeholder="250" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs" />
@@ -2205,23 +2308,49 @@
           </div>
         </div>
         <div>
-          <label class="block font-semibold text-slate-700 mb-1">Tax / Business Registration No.</label>
-          <input id="b2bProfileRegNo" placeholder="Optional business registration ID" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs" />
-        </div>
-        <div>
           <label class="block font-semibold text-slate-700 mb-1">Public Description / Terms</label>
           <textarea id="b2bProfileDescription" rows="2" placeholder="Tell buyers about your wholesale terms, warehousing speed..." class="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs"></textarea>
         </div>
         <div class="pt-1">
           <label class="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" id="b2bProfileIsPublic" checked class="rounded text-indigo-600" />
-            <span class="font-semibold text-slate-800">List my catalog on Verified Wholesalers directory</span>
+            <span class="font-semibold text-slate-800">List my catalog on Verified Wholesalers directory (auto-publishes active SKUs if none selected)</span>
           </label>
+        </div>
+
+        <!-- Product Publishing Table -->
+        <div class="border border-slate-200 rounded-xl overflow-hidden">
+          <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+            <div>
+              <h4 class="text-xs font-bold text-slate-800">📦 Select Products to Publish on B2B Network</h4>
+              <p class="text-[11px] text-slate-500">Set wholesale prices and MOQs. Internal cost prices remain private.</p>
+            </div>
+            <button type="button" onclick="App.selectAllB2bProducts()" class="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition shrink-0">
+              Select All Products
+            </button>
+          </div>
+          <div class="overflow-x-auto max-h-60 overflow-y-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead class="sticky top-0 bg-slate-50 border-b border-slate-200 text-[10px] font-semibold uppercase text-slate-500">
+                <tr>
+                  <th class="py-2 px-3 w-10">Publish</th>
+                  <th class="py-2 px-3">SKU &amp; Product</th>
+                  <th class="py-2 px-3 text-right">Stock</th>
+                  <th class="py-2 px-3 text-right">B2B Price ($)</th>
+                  <th class="py-2 px-3 text-right">Min Order Qty</th>
+                  <th class="py-2 px-3 text-center">Overstock Deal</th>
+                </tr>
+              </thead>
+              <tbody id="b2bProfileProductsBody" class="divide-y divide-slate-100">
+                <tr><td colspan="6" class="py-4 text-center text-slate-400">Loading catalog products...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div class="flex justify-end gap-2 pt-3 border-t border-slate-100">
           <button type="button" onclick="App.closeModal('b2bProfileModal')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50">Cancel</button>
-          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs">Save B2B Profile</button>
+          <button type="submit" class="px-5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-xs">Save B2B Profile &amp; Catalog</button>
         </div>
       </form>
     </div>
@@ -2231,9 +2360,10 @@
        FLOATING AI ASSISTANT & COPILOT DRAWER
   =========================================== -->
   <button id="copilotTriggerBtn" onclick="App.toggleCopilot(true)" title="Ask AI Assistant (Ctrl+K or Alt+A)"
-    class="fixed bottom-6 right-6 z-40 flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-bold shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 select-none focus:outline-none focus:ring-2 focus:ring-indigo-500">
+    class="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white text-xs font-bold shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5 select-none focus:outline-none focus:ring-2 focus:ring-indigo-500">
     <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-    <span>✨ Ask AI Assistant</span>
+    <span class="sm:hidden">✨ AI</span>
+    <span class="hidden sm:inline">✨ Ask AI Assistant</span>
     <span class="px-1.5 py-0.5 rounded text-[10px] bg-indigo-500/40 text-indigo-100 font-mono hidden sm:inline-block">Ctrl+K</span>
   </button>
 
@@ -2373,7 +2503,8 @@
   <!-- Global Toast Notification Container -->
   <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-  <script src="/js/views/forecasts.js?v=2.5"></script>
-  <script src="/js/app.js?v=2.5"></script>
+  <script src="/js/views/forecasts.js?v=2.6"></script>
+  <script src="/js/demo-tour.js?v=2.6"></script>
+  <script src="/js/app.js?v=2.6"></script>
 </body>
 </html>

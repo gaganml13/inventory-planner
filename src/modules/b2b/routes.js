@@ -178,7 +178,25 @@ function createB2bRouter(db) {
           description: 'Verified commercial wholesale distributor'
         };
       }
-      res.json(profile);
+
+      const products = db.prepare(`
+        SELECT 
+          p.id, p.sku, p.name, p.category, p.pack_size,
+          p.sell_price_cents,
+          COALESCE(p.is_b2b_listed, 0) AS is_b2b_listed,
+          COALESCE(p.b2b_price_cents, p.sell_price_cents) AS b2b_price_cents,
+          COALESCE(p.b2b_moq, p.pack_size, 1) AS b2b_moq,
+          COALESCE(sm.on_hand, 0) AS on_hand
+        FROM products p
+        LEFT JOIN (
+          SELECT product_id, SUM(change_qty) AS on_hand
+          FROM stock_movements WHERE business_id = ? GROUP BY product_id
+        ) sm ON p.id = sm.product_id
+        WHERE p.business_id = ? AND p.is_archived = 0
+        ORDER BY p.is_b2b_listed DESC, p.name ASC
+      `).all(bizId, bizId);
+
+      res.json({ ...profile, products });
     } catch (err) {
       res.status(500).json({ error: true, message: err.message });
     }
@@ -188,26 +206,65 @@ function createB2bRouter(db) {
   router.post('/profile', (req, res) => {
     try {
       const bizId = getBizId(req);
-      const { public_name, category, city, gst_or_reg_no, min_order_cents, delivery_days, is_public, description } = req.body;
+      const { public_name, category, city, gst_or_reg_no, min_order_cents, delivery_days, is_public, description, products } = req.body;
+      const isPublicFlag = is_public !== undefined ? (is_public ? 1 : 0) : 1;
 
-      db.prepare(`
-        INSERT OR REPLACE INTO b2b_profiles (
-          business_id, public_name, category, city, gst_or_reg_no, is_verified,
-          min_order_cents, delivery_days, is_public, description, updated_at
-        ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
-      `).run(
-        bizId,
-        public_name || 'My Wholesale Business',
-        category || 'General Wholesale',
-        city || 'Logistics Hub',
-        gst_or_reg_no || '',
-        parseInt(min_order_cents || 25000, 10),
-        parseInt(delivery_days || 3, 10),
-        is_public !== undefined ? (is_public ? 1 : 0) : 1,
-        description || ''
-      );
+      const tx = db.transaction(() => {
+        db.prepare(`
+          INSERT OR REPLACE INTO b2b_profiles (
+            business_id, public_name, category, city, gst_or_reg_no, is_verified,
+            min_order_cents, delivery_days, is_public, description, updated_at
+          ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))
+        `).run(
+          bizId,
+          public_name || 'My Wholesale Business',
+          category || 'General Wholesale',
+          city || 'Logistics Hub',
+          gst_or_reg_no || '',
+          parseInt(min_order_cents || 25000, 10),
+          parseInt(delivery_days || 3, 10),
+          isPublicFlag,
+          description || ''
+        );
 
-      res.json({ success: true, message: 'B2B Profile saved' });
+        if (Array.isArray(products)) {
+          const upd = db.prepare(`
+            UPDATE products
+            SET is_b2b_listed = ?, b2b_price_cents = ?, b2b_moq = ?
+            WHERE id = ? AND business_id = ?
+          `);
+          for (const item of products) {
+            const pId = parseInt(item.id, 10);
+            if (!pId) continue;
+            upd.run(
+              item.is_b2b_listed ? 1 : 0,
+              item.b2b_price_cents !== undefined && item.b2b_price_cents !== null ? parseInt(item.b2b_price_cents, 10) : null,
+              Math.max(1, parseInt(item.b2b_moq || 1, 10)),
+              pId,
+              bizId
+            );
+          }
+        }
+
+        // Auto-Publish Fallback: if public directory listing is enabled and 0 products are listed,
+        // auto-publish active catalog items so the storefront never shows 0 items by accident.
+        if (isPublicFlag === 1) {
+          const listedRow = db.prepare('SELECT COUNT(*) AS cnt FROM products WHERE business_id = ? AND is_archived = 0 AND is_b2b_listed = 1').get(bizId);
+          if (!listedRow || listedRow.cnt === 0) {
+            db.prepare(`
+              UPDATE products
+              SET is_b2b_listed = 1,
+                  b2b_price_cents = COALESCE(b2b_price_cents, sell_price_cents),
+                  b2b_moq = COALESCE(NULLIF(b2b_moq, 1), pack_size, 1)
+              WHERE business_id = ? AND is_archived = 0
+            `).run(bizId);
+          }
+        }
+      });
+
+      tx();
+      const finalCount = db.prepare('SELECT COUNT(*) AS cnt FROM products WHERE business_id = ? AND is_archived = 0 AND is_b2b_listed = 1').get(bizId)?.cnt || 0;
+      res.json({ success: true, listedCount: finalCount, message: `B2B Profile saved (${finalCount} products published)` });
     } catch (err) {
       res.status(500).json({ error: true, message: err.message });
     }

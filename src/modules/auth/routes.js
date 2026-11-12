@@ -69,6 +69,24 @@ function createAuthRouter(authService, db) {
     }
   });
 
+  router.post('/demo/reset', (req, res) => {
+    try {
+      if (!req.user || !req.business) {
+        return res.status(401).json({ error: true, message: 'Authentication required' });
+      }
+      const biz = db.prepare('SELECT id, is_demo FROM businesses WHERE id = ?').get(req.business.id);
+      if (!biz || !biz.is_demo) {
+        return res.status(403).json({ error: true, message: 'Demo reset is only permitted in Demo Guest mode.' });
+      }
+
+      const { resetDemoDatabase } = require('../../../database/seed');
+      const newBizId = resetDemoDatabase(db, biz.id);
+      res.json({ success: true, businessId: newBizId, message: 'Demo sandbox has been reset to clean initial state!' });
+    } catch (err) {
+      res.status(500).json({ error: true, message: err.message });
+    }
+  });
+
   router.post('/logout', (req, res) => {
     try {
       if (req.sessionId) {

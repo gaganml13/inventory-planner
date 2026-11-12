@@ -105,14 +105,22 @@ self.onmessage = async (e) => {
         id
       });
 
-      // 2. Construct grounded prompt with Live SQLite Context
+      // 2. Construct compact grounded prompt (avoids overflowing small 0.5B context window)
+      const compactCtx = {
+        business: liveContext?.business?.name,
+        safeBudget: liveContext?.business?.safeBudgetFormatted,
+        operatingCash: liveContext?.business?.operatingCashFormatted,
+        cashReserve: liveContext?.business?.cashReserveFormatted,
+        totalSkus: liveContext?.inventorySummary?.totalSkus,
+        criticalCount: liveContext?.inventorySummary?.criticalStockCount,
+        b2bWholesalers: liveContext?.b2bSummary?.wholesalersCount
+      };
       const prompt = [
         `<|im_start|>system`,
-        `You are Smart Copilot, an expert wholesale operations and inventory analyst for Smart Business Analyzer.`,
-        `Answer the user's question concisely based strictly on the factual business context and verified calculations below. Do not make up numbers.`,
-        `Live Business Context: ${JSON.stringify(liveContext || {})}`,
-        `Verified Grounded Data:`,
-        `${groundedAnswer || 'No specific figures.'}`,
+        `You are Smart Copilot for Smart Business Manager.`,
+        `Answer ONLY the user's specific question concisely using the Verified Grounded Data below. Never invent numbers.`,
+        `Snapshot: ${JSON.stringify(compactCtx)}`,
+        `Verified Grounded Data:\n${groundedAnswer || 'No specific figures.'}`,
         `<|im_end|>`,
         `<|im_start|>user`,
         `${question}`,
